@@ -258,14 +258,6 @@ body {
         ) !important;
 }
 
-/* Controls - blend mode buttons */
-.controls {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    margin-bottom: 40px;
-}
-
 button {
     padding: 10px 24px;
     font-size: 0.8rem;
@@ -918,8 +910,7 @@ button:focus {
     display: none;
 }
 
-/* In dev mode, disable menu toggle click behavior */
-body.dev-mode .controls,
+/* In dev mode, dim chat panel to focus on calibration */
 body.dev-mode .chat-panel {
     opacity: 0.3;
     pointer-events: none;

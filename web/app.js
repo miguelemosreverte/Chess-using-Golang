@@ -764,8 +764,8 @@ function setupMenuToggle() {
         if (board.contains(e.target)) return;
         if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) return;
         if (document.body.classList.contains('menu-visible')) {
-            if (e.target.closest('button') || e.target.closest('.controls') ||
-                e.target.closest('.undo-panel') || e.target.closest('.chat-panel')) return;
+            if (e.target.closest('button') || e.target.closest('.undo-panel') ||
+                e.target.closest('.chat-panel')) return;
         }
         document.body.classList.toggle('menu-visible');
     });
