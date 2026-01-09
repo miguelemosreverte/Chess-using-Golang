@@ -254,8 +254,7 @@ async function enterChapter(chapterId) {
 }
 
 /**
- * Create the fullscreen book element for accelerating transition.
- * Uses wood texture background and book spine with ambient occlusion.
+ * Create fullscreen container for image sequence transition.
  */
 function createAcceleratingBook(boardImagePath, chatImages) {
     const container = document.createElement('div');
@@ -264,46 +263,17 @@ function createAcceleratingBook(boardImagePath, chatImages) {
         position: fixed;
         inset: 0;
         z-index: 2000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         background: url('wood-bg.jpg') center/cover;
         opacity: 0;
     `;
 
     container.innerHTML = `
-        <div class="accel-book" style="
-            width: 70vw;
-            height: 80vh;
-            perspective: 2000px;
-            position: relative;
+        <div class="accel-page-container" style="
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
         ">
-            <!-- Book spine with ambient occlusion shadow -->
-            <div class="book-spine" style="
-                position: absolute;
-                left: 50%;
-                top: 0;
-                width: 20px;
-                height: 100%;
-                transform: translateX(-50%);
-                background: linear-gradient(to right,
-                    rgba(0,0,0,0.4) 0%,
-                    rgba(0,0,0,0.1) 30%,
-                    rgba(0,0,0,0.0) 50%,
-                    rgba(0,0,0,0.1) 70%,
-                    rgba(0,0,0,0.4) 100%
-                );
-                z-index: 1000;
-                pointer-events: none;
-            "></div>
-
-            <div class="accel-page-container" style="
-                position: relative;
-                width: 100%;
-                height: 100%;
-            ">
-                <!-- Pages will be dynamically added here -->
-            </div>
         </div>
     `;
 
@@ -333,194 +303,37 @@ async function runAcceleratingPageTurns(container, chatImages, boardImagePath) {
     // Add board as final image
     imagesToShow.push(boardImagePath);
 
-    // Try WebGPU first
-    const useWebGPU = typeof webgpuPageTurn !== 'undefined' && await webgpuPageTurn.init();
+    // Simple image sequence - starts at 1s, gets faster to 0.5s
+    let timing = 1000;
+    const minTiming = 500;
+    const speedFactor = 0.85;
 
-    // Timing: starts slower at 1500ms, decreases by ~25% each turn
-    let timing = 1500;
-    const speedFactor = 0.75;
-    const minTiming = 300;
+    // Create fullscreen image element
+    const imgEl = document.createElement('img');
+    imgEl.style.cssText = `
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    `;
+    pageContainer.appendChild(imgEl);
 
     for (let i = 0; i < imagesToShow.length; i++) {
         const isLast = i === imagesToShow.length - 1;
-        const imagePath = imagesToShow[i];
 
-        if (useWebGPU) {
-            // WebGPU animated page turn with curved geometry
-            await webgpuPageTurn.animatePageTurn(imagePath, timing, container);
-            webgpuPageTurn.hide();
-        } else {
-            // CSS fallback
-            const page = createCurvedPage(imagePath, timing, 100 - i);
-            pageContainer.appendChild(page);
+        // Show image fullscreen
+        imgEl.src = imagesToShow[i];
 
-            await sleep(timing * 0.4);
+        // Wait for timing duration
+        await sleep(timing);
 
-            if (!isLast) {
-                animateCurvedPageFlip(page, timing);
-                await sleep(timing * 0.8);
-            }
-        }
-
-        if (isLast) {
-            // Last page (board) - hold and zoom
-            await sleep(400);
-
-            // Show final board fullscreen
-            pageContainer.innerHTML = `
-                <div style="
-                    position: absolute;
-                    inset: 0;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                ">
-                    <img src="${boardImagePath}" style="
-                        max-width: 90%;
-                        max-height: 90%;
-                        object-fit: contain;
-                        border-radius: 8px;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-                        transition: transform 0.6s ease-out;
-                    ">
-                </div>
-            `;
-
-            await sleep(100);
-
-            // Zoom effect
-            const boardImg = pageContainer.querySelector('img');
-            if (boardImg) {
-                boardImg.style.transform = 'scale(1.05)';
-            }
-            container.style.transition = 'background 0.6s';
-            container.style.background = 'transparent';
-
-            await sleep(600);
-        }
-
-        // Decrease timing for next turn (accelerate!)
+        // Speed up for next image
         timing = Math.max(minTiming, timing * speedFactor);
     }
-}
 
-/**
- * Create a curved page element with multiple segments for realistic bend.
- */
-function createCurvedPage(imagePath, timing, zIndex) {
-    const page = document.createElement('div');
-    page.className = 'curved-page';
-    page.style.cssText = `
-        position: absolute;
-        inset: 0;
-        transform-style: preserve-3d;
-        z-index: ${zIndex};
-    `;
-
-    // Create inner container that will hold the curved segments
-    const inner = document.createElement('div');
-    inner.className = 'curved-page-inner';
-    inner.style.cssText = `
-        position: absolute;
-        inset: 0;
-        transform-style: preserve-3d;
-        transform-origin: left center;
-    `;
-
-    // Number of segments for curve (more = smoother curve)
-    const segments = 8;
-    const segmentWidth = 100 / segments;
-
-    for (let s = 0; s < segments; s++) {
-        const segment = document.createElement('div');
-        segment.className = 'page-segment';
-        segment.dataset.segment = s;
-        segment.style.cssText = `
-            position: absolute;
-            left: ${s * segmentWidth}%;
-            top: 0;
-            width: ${segmentWidth + 0.5}%;
-            height: 100%;
-            transform-style: preserve-3d;
-            transform-origin: left center;
-            backface-visibility: hidden;
-            overflow: hidden;
-            transition: transform ${timing}ms cubic-bezier(0.4, 0, 0.2, 1);
-        `;
-
-        // Front of segment (shows image)
-        const front = document.createElement('div');
-        front.style.cssText = `
-            position: absolute;
-            width: ${100 * segments}%;
-            height: 100%;
-            left: ${-s * 100}%;
-            background: #f5f0e6;
-            backface-visibility: hidden;
-        `;
-        front.innerHTML = `
-            <img src="${imagePath}" style="
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-            ">
-        `;
-
-        // Back of segment (paper texture)
-        const back = document.createElement('div');
-        back.style.cssText = `
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(to right, #e8e0d5, #f5f0e6);
-            transform: rotateY(180deg);
-            backface-visibility: hidden;
-        `;
-
-        // Add shadow for depth at spine edge
-        if (s === 0) {
-            const shadow = document.createElement('div');
-            shadow.style.cssText = `
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 30px;
-                height: 100%;
-                background: linear-gradient(to right, rgba(0,0,0,0.15), transparent);
-                pointer-events: none;
-                z-index: 10;
-            `;
-            front.appendChild(shadow);
-        }
-
-        segment.appendChild(front);
-        segment.appendChild(back);
-        inner.appendChild(segment);
-    }
-
-    page.appendChild(inner);
-    return page;
-}
-
-/**
- * Animate a curved page flip with realistic bend.
- */
-function animateCurvedPageFlip(page, duration) {
-    const segments = page.querySelectorAll('.page-segment');
-    const numSegments = segments.length;
-
-    segments.forEach((segment, i) => {
-        // Each segment rotates with a slight delay for wave effect
-        const delay = (i / numSegments) * (duration * 0.3);
-
-        // Curve amount - middle segments bend more
-        const bendFactor = Math.sin((i / numSegments) * Math.PI) * 15;
-
-        setTimeout(() => {
-            // Rotate segment with slight curve
-            segment.style.transform = `rotateY(${-180 + bendFactor}deg)`;
-        }, delay);
-    });
+    // Brief pause on final image before navigating
+    await sleep(300);
 }
 
 /**

@@ -2,12 +2,18 @@
 # Mediterranean coastal chess - sun, sea, and strategy
 
 # Board images - chess boards for gameplay (top-down, calibratable)
+# Story order: cafe terrace first, then beach sand
 board: cafe-terrace-02.png | cal
 board: cafe-terrace-03.png | cal
 board: cafe-terrace-04.png | cal
-board: beach-sand-02.png
-board: beach-sand-03.png
-board: beach-sand-04.png
+board: beach-sand-05.png
+board: beach-sand-06.png
+board: beach-sand-07.png
+board: beach-sand-08.png
+board: beach-sand-09.png
+board: beach-sand-10.png
+board: beach-sand-11.png
+board: beach-sand-12.png
 
 # Chat images - Sunny variation (rotates every 30s)
 chat: sunny-01.png | var:sunny | next:sunny-02.png

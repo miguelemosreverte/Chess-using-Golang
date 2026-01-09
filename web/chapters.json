@@ -30,9 +30,14 @@
         { "file": "cafe-terrace-02.png", "calibrated": true },
         { "file": "cafe-terrace-03.png", "calibrated": true },
         { "file": "cafe-terrace-04.png", "calibrated": true },
-        { "file": "beach-sand-02.png", "calibrated": false },
-        { "file": "beach-sand-03.png", "calibrated": false },
-        { "file": "beach-sand-04.png", "calibrated": false }
+        { "file": "beach-sand-05.png", "calibrated": false },
+        { "file": "beach-sand-06.png", "calibrated": false },
+        { "file": "beach-sand-07.png", "calibrated": false },
+        { "file": "beach-sand-08.png", "calibrated": false },
+        { "file": "beach-sand-09.png", "calibrated": false },
+        { "file": "beach-sand-10.png", "calibrated": false },
+        { "file": "beach-sand-11.png", "calibrated": false },
+        { "file": "beach-sand-12.png", "calibrated": false }
       ],
       "chatImages": [],
       "defaultChatImage": null

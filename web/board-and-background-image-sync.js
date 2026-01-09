@@ -407,29 +407,47 @@ async function setupBackgroundToggle() {
     });
 
     // Mouse drag handling for corner calibration (only in calibration mode)
+    // Works with both circle handles and extended L-shaped arms
+    let draggingCornerIndex = null;
+
     document.addEventListener('mousedown', (e) => {
         if (devModeIndex !== 1) return;
+
+        // Check for circle handle
         const handle = e.target.closest('.corner-handle');
         if (handle) {
             draggingHandle = handle;
+            draggingCornerIndex = parseInt(handle.dataset.index);
+            e.preventDefault();
+            return;
+        }
+
+        // Check for extended arm
+        const arm = e.target.closest('.corner-arm');
+        if (arm) {
+            draggingCornerIndex = parseInt(arm.dataset.index);
+            draggingHandle = cornerHandles[draggingCornerIndex];
             e.preventDefault();
         }
     });
 
     document.addEventListener('mousemove', (e) => {
-        if (!draggingHandle) return;
-        const index = parseInt(draggingHandle.dataset.index);
+        if (draggingCornerIndex === null) return;
+
         // Store as percentage of current viewport
-        corners[index] = {
+        corners[draggingCornerIndex] = {
             x: e.clientX / window.innerWidth,
             y: e.clientY / window.innerHeight
         };
-        updateHandlePosition(draggingHandle, e.clientX, e.clientY);
+
+        // Update both circle handle and extended arms
+        updateCornerHandles();
         applyCornerTransform();
     });
 
     document.addEventListener('mouseup', () => {
         draggingHandle = null;
+        draggingCornerIndex = null;
     });
 }
 
@@ -477,12 +495,18 @@ function updateDevModeUI() {
             initDefaultCorners();
         }
         createCornerHandles();
-
-        // Auto-advance to first uncalibrated image
-        advanceToUncalibratedImage();
+        updateCalibrationStatus();
+        // Show all pieces in calibration mode
+        if (typeof updateUI === 'function') {
+            updateUI();
+        }
     } else {
         document.body.classList.remove('dev-mode');
         removeCornerHandles();
+        // Refresh pieces when exiting calibration mode
+        if (typeof updateUI === 'function') {
+            updateUI();
+        }
     }
 }
 
@@ -516,17 +540,23 @@ async function advanceToUncalibratedImage() {
 /**
  * Initialize corners to match the board's current screen position.
  * Used as a starting point for calibration.
+ * Ensures corners are within visible screen bounds (10% margin).
  */
 function initDefaultCorners() {
     const board = document.getElementById('board');
     if (!board) return;
 
     const rect = board.getBoundingClientRect();
+
+    // Clamp to visible area with 10% margin
+    const margin = 0.1;
+    const clamp = (val) => Math.max(margin, Math.min(1 - margin, val));
+
     corners = [
-        { x: rect.left / window.innerWidth, y: rect.top / window.innerHeight },      // TL
-        { x: rect.right / window.innerWidth, y: rect.top / window.innerHeight },     // TR
-        { x: rect.right / window.innerWidth, y: rect.bottom / window.innerHeight },  // BR
-        { x: rect.left / window.innerWidth, y: rect.bottom / window.innerHeight }    // BL
+        { x: clamp(rect.left / window.innerWidth), y: clamp(rect.top / window.innerHeight) },      // TL
+        { x: clamp(rect.right / window.innerWidth), y: clamp(rect.top / window.innerHeight) },     // TR
+        { x: clamp(rect.right / window.innerWidth), y: clamp(rect.bottom / window.innerHeight) },  // BR
+        { x: clamp(rect.left / window.innerWidth), y: clamp(rect.bottom / window.innerHeight) }    // BL
     ];
 }
 
@@ -637,31 +667,142 @@ async function saveConfigToServer() {
 // DEV MODE - CORNER HANDLES
 // =============================================================================
 
+// Store extended handle elements separately
+let extendedHandles = [];
+
 /**
  * Create draggable corner handles for calibration.
- * Labels show position: TL (top-left), TR, BR, BL
+ * Each corner has:
+ * - A circle handle at the corner point (labeled TL, TR, BR, BL)
+ * - L-shaped red extended arms (5% offset outward, 30% length along edges)
+ *   These allow manipulation even when the corner is off-screen
  */
 function createCornerHandles() {
     removeCornerHandles();
 
     const labels = ['TL', 'TR', 'BR', 'BL'];
+    // Direction offsets for each corner: [horizontal outward, vertical outward]
+    // TL: extends left and up (-1, -1), arms go right and down
+    // TR: extends right and up (1, -1), arms go left and down
+    // BR: extends right and down (1, 1), arms go left and up
+    // BL: extends left and down (-1, 1), arms go right and up
+    const directions = [
+        { outX: -1, outY: -1, armX: 1, armY: 1 },   // TL
+        { outX: 1, outY: -1, armX: -1, armY: 1 },   // TR
+        { outX: 1, outY: 1, armX: -1, armY: -1 },   // BR
+        { outX: -1, outY: 1, armX: 1, armY: -1 }    // BL
+    ];
+
     corners.forEach((corner, i) => {
+        const dir = directions[i];
+        const cornerX = corner.x * window.innerWidth;
+        const cornerY = corner.y * window.innerHeight;
+
+        // Create circle handle at corner
         const handle = document.createElement('div');
         handle.className = 'corner-handle';
         handle.dataset.index = i;
         handle.textContent = labels[i];
-        handle.style.left = (corner.x * window.innerWidth) + 'px';
-        handle.style.top = (corner.y * window.innerHeight) + 'px';
+        handle.style.left = cornerX + 'px';
+        handle.style.top = cornerY + 'px';
         document.body.appendChild(handle);
         cornerHandles.push(handle);
+
+        // Create L-shaped extended handle
+        // Offset 5% of viewport outward from corner
+        const offsetPx = Math.min(window.innerWidth, window.innerHeight) * 0.05;
+        // Arms extend 30% of viewport along each edge
+        const armLength = Math.min(window.innerWidth, window.innerHeight) * 0.30;
+
+        // Create container for the L-shape
+        const extContainer = document.createElement('div');
+        extContainer.className = 'corner-extended';
+        extContainer.dataset.index = i;
+        extContainer.style.cssText = `
+            position: fixed;
+            pointer-events: none;
+            z-index: 9998;
+        `;
+
+        // Horizontal arm
+        const hArm = document.createElement('div');
+        hArm.className = 'corner-arm corner-arm-h';
+        hArm.dataset.index = i;
+        const hStartX = cornerX + dir.outX * offsetPx;
+        const hStartY = cornerY + dir.outY * offsetPx;
+        hArm.style.cssText = `
+            position: fixed;
+            left: ${dir.armX > 0 ? hStartX : hStartX - armLength}px;
+            top: ${hStartY - 3}px;
+            width: ${armLength}px;
+            height: 6px;
+            background: rgba(255, 50, 50, 0.8);
+            cursor: move;
+            pointer-events: auto;
+            border-radius: 3px;
+        `;
+        extContainer.appendChild(hArm);
+
+        // Vertical arm
+        const vArm = document.createElement('div');
+        vArm.className = 'corner-arm corner-arm-v';
+        vArm.dataset.index = i;
+        vArm.style.cssText = `
+            position: fixed;
+            left: ${hStartX - 3}px;
+            top: ${dir.armY > 0 ? hStartY : hStartY - armLength}px;
+            width: 6px;
+            height: ${armLength}px;
+            background: rgba(255, 50, 50, 0.8);
+            cursor: move;
+            pointer-events: auto;
+            border-radius: 3px;
+        `;
+        extContainer.appendChild(vArm);
+
+        document.body.appendChild(extContainer);
+        extendedHandles.push(extContainer);
     });
 }
 
 function updateCornerHandles() {
+    const directions = [
+        { outX: -1, outY: -1, armX: 1, armY: 1 },   // TL
+        { outX: 1, outY: -1, armX: -1, armY: 1 },   // TR
+        { outX: 1, outY: 1, armX: -1, armY: -1 },   // BR
+        { outX: -1, outY: 1, armX: 1, armY: -1 }    // BL
+    ];
+
+    const offsetPx = Math.min(window.innerWidth, window.innerHeight) * 0.05;
+    const armLength = Math.min(window.innerWidth, window.innerHeight) * 0.30;
+
     corners.forEach((corner, i) => {
+        const cornerX = corner.x * window.innerWidth;
+        const cornerY = corner.y * window.innerHeight;
+        const dir = directions[i];
+
+        // Update circle handle
         if (cornerHandles[i]) {
-            cornerHandles[i].style.left = (corner.x * window.innerWidth) + 'px';
-            cornerHandles[i].style.top = (corner.y * window.innerHeight) + 'px';
+            cornerHandles[i].style.left = cornerX + 'px';
+            cornerHandles[i].style.top = cornerY + 'px';
+        }
+
+        // Update extended arms
+        if (extendedHandles[i]) {
+            const hStartX = cornerX + dir.outX * offsetPx;
+            const hStartY = cornerY + dir.outY * offsetPx;
+
+            const hArm = extendedHandles[i].querySelector('.corner-arm-h');
+            const vArm = extendedHandles[i].querySelector('.corner-arm-v');
+
+            if (hArm) {
+                hArm.style.left = `${dir.armX > 0 ? hStartX : hStartX - armLength}px`;
+                hArm.style.top = `${hStartY - 3}px`;
+            }
+            if (vArm) {
+                vArm.style.left = `${hStartX - 3}px`;
+                vArm.style.top = `${dir.armY > 0 ? hStartY : hStartY - armLength}px`;
+            }
         }
     });
 }
@@ -674,6 +815,8 @@ function updateHandlePosition(handle, x, y) {
 function removeCornerHandles() {
     cornerHandles.forEach(h => h.remove());
     cornerHandles = [];
+    extendedHandles.forEach(h => h.remove());
+    extendedHandles = [];
 }
 
 

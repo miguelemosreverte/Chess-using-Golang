@@ -900,9 +900,13 @@ function updateUI() {
         // Set piece (check reveal state)
         // When piecesHidden is true, only show pieces matching revealedPieces
         // When piecesHidden is false (normal mode), show all pieces
+        // In calibration mode (devModeIndex === 1), always show all pieces
         let shouldShowPiece = false;
         if (piece) {
-            if (!piecesHidden) {
+            if (typeof devModeIndex !== 'undefined' && devModeIndex === 1) {
+                // Calibration mode - always show all pieces
+                shouldShowPiece = true;
+            } else if (!piecesHidden) {
                 // Normal mode - show all pieces
                 shouldShowPiece = true;
             } else if (revealedPieces === 'all') {
