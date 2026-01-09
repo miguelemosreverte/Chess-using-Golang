@@ -202,7 +202,9 @@ function createPageContent(pageData, pageIndex) {
  * Enter a chapter with cinematic transition.
  * 1. Turn page to show album
  * 2. Zoom random chat image to fullscreen
- * 3. After delay, split: chat→corner, board→fullscreen
+ * 3. Film burn transition to board image
+ * 4. Navigate with transition overlay still visible
+ * 5. Game renders behind overlay, then we fade out the overlay
  */
 async function enterChapter(chapterId) {
     console.log('Entering chapter:', chapterId);
@@ -215,7 +217,6 @@ async function enterChapter(chapterId) {
 
     // Step 1: Turn page to show album (if there is one)
     if (albumPageIndex > currentPageIndex) {
-        // Animate page turn
         const page = document.getElementById('current-page');
         if (page) {
             page.classList.add('flipped');
@@ -245,16 +246,20 @@ async function enterChapter(chapterId) {
     // Step 3: Zoom the chat image to fullscreen
     await zoomToFullscreen(zoomImagePath);
 
-    // Step 4: Hold for 2-3 seconds
-    await sleep(2500);
+    // Step 4: Hold while showing chat image
+    await sleep(2000);
 
-    // Step 5: Create the game URL with the specific board image
-    const gameUrl = await createGameUrl(chapterId, boardImage.file);
-
-    // Step 6: Split animation - chat to corner, board to fullscreen
+    // Step 5: Film burn transition to board image
     await splitTransition(zoomImagePath, boardImagePath);
 
-    // Step 7: Navigate to game immediately (no fade - we're already showing the board)
+    // Step 6: DON'T hide the WebGPU canvas yet - keep showing board image
+    // Store the board image path for the game to use for reveal
+    sessionStorage.setItem('transitionBoardImage', boardImagePath);
+    sessionStorage.setItem('transitionActive', 'true');
+
+    // Step 7: Navigate - the WebGPU canvas persists through navigation
+    // The game will handle revealing itself when ready
+    const gameUrl = await createGameUrl(chapterId, boardImage.file);
     window.location.href = gameUrl;
 }
 

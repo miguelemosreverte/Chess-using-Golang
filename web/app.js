@@ -77,6 +77,7 @@ let myColor = null;
 /**
  * Initialize the application on page load.
  * Sets up player ID, loads game state, renders board, and starts polling.
+ * Handles smooth transition reveal if coming from the book selector.
  */
 async function init() {
     // Get game ID from URL path
@@ -87,6 +88,36 @@ async function init() {
     if (!gameId || gameId === '') {
         openBook();
         return;
+    }
+
+    // Check if we're coming from a transition (book selector)
+    const transitionActive = sessionStorage.getItem('transitionActive');
+    const transitionBoardImage = sessionStorage.getItem('transitionBoardImage');
+    let transitionOverlay = null;
+
+    if (transitionActive === 'true' && transitionBoardImage) {
+        // Create fullscreen overlay showing the board image from the transition
+        // This prevents the visual "pop" while the game renders behind it
+        transitionOverlay = document.createElement('div');
+        transitionOverlay.id = 'transition-overlay';
+        transitionOverlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #000;
+        `;
+        transitionOverlay.innerHTML = `
+            <img src="${transitionBoardImage}" style="
+                width: 100vw;
+                height: 100vh;
+                object-fit: cover;
+            ">
+        `;
+        document.body.appendChild(transitionOverlay);
+
+        // Clear the transition state
+        sessionStorage.removeItem('transitionActive');
+        sessionStorage.removeItem('transitionBoardImage');
     }
 
     // Generate unique player ID for this tab session
@@ -110,8 +141,24 @@ async function init() {
     await loadChat();
 
     // Setup background after board is rendered
+    // When complete, reveal the game by fading out the transition overlay
     requestAnimationFrame(() => {
-        setupBackgroundToggle();
+        setupBackgroundToggle().then(() => {
+            // Background is fully loaded and rendered
+            if (transitionOverlay) {
+                // Give a tiny bit more time to ensure everything is painted
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        // Fade out the overlay to reveal the game
+                        transitionOverlay.style.transition = 'opacity 0.3s ease-out';
+                        transitionOverlay.style.opacity = '0';
+                        setTimeout(() => {
+                            transitionOverlay.remove();
+                        }, 300);
+                    });
+                });
+            }
+        });
     });
 
     // Re-apply transforms on resize to keep board and background in sync

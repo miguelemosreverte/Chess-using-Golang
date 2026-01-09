@@ -321,8 +321,32 @@ async function setupBackgroundToggle() {
     initChatBackground();
 
     // Wait for next frame to ensure board transform is rendered before measuring
-    requestAnimationFrame(() => {
-        applyBackground();
+    // Return a promise that resolves when background is fully loaded
+    await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            applyBackground();
+            // Wait for the background image to load
+            const bgImg = document.querySelector('.container');
+            if (bgImg) {
+                const bgUrl = getComputedStyle(bgImg).backgroundImage;
+                if (bgUrl && bgUrl !== 'none') {
+                    const img = new Image();
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    // Extract URL from "url(...)"
+                    const match = bgUrl.match(/url\(["']?(.+?)["']?\)/);
+                    if (match) {
+                        img.src = match[1];
+                    } else {
+                        resolve();
+                    }
+                } else {
+                    resolve();
+                }
+            } else {
+                resolve();
+            }
+        });
     });
 
     // Keyboard controls
