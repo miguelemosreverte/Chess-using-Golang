@@ -80,8 +80,9 @@ async function init() {
         setupBackgroundToggle();
     });
 
-    // Re-apply background on resize to keep it locked to the board
+    // Re-apply transforms on resize to keep board and background in sync
     window.addEventListener('resize', () => {
+        applyCornerTransform();
         applyBackground();
     });
 
