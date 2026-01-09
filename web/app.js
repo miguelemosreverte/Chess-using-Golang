@@ -1100,15 +1100,6 @@ function updateUI() {
         undoPanel.style.display = 'none';
     }
 
-    // Update live button indicator
-    const liveBtn = document.getElementById('live-btn');
-    if (isLive) {
-        liveBtn.classList.add('live-indicator');
-        liveBtn.textContent = '●';
-    } else {
-        liveBtn.classList.remove('live-indicator');
-        liveBtn.textContent = '○';
-    }
 }
 
 // Go to a specific move in history
