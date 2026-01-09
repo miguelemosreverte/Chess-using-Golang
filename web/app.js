@@ -74,6 +74,15 @@ let myColor = null;
    INITIALIZATION
    ============================================================================= */
 
+/** Whether pieces are hidden until user clicks (from book transition) */
+let piecesHidden = false;
+
+/** Whether chat is hidden until opponent joins */
+let chatHiddenUntilOpponent = false;
+
+/** Whether we've sent the auto-hello message */
+let autoHelloSent = false;
+
 /**
  * Initialize the application on page load.
  * Sets up player ID, loads game state, renders board, and starts polling.
@@ -93,11 +102,12 @@ async function init() {
     // Check if we're coming from a transition (book selector)
     const transitionActive = sessionStorage.getItem('transitionActive');
     const transitionBoardImage = sessionStorage.getItem('transitionBoardImage');
+    const hidePieces = sessionStorage.getItem('hidePiecesUntilClick');
+    const hideChat = sessionStorage.getItem('hideChatUntilOpponent');
     let transitionOverlay = null;
 
     if (transitionActive === 'true' && transitionBoardImage) {
         // Create fullscreen overlay showing the board image from the transition
-        // This prevents the visual "pop" while the game renders behind it
         transitionOverlay = document.createElement('div');
         transitionOverlay.id = 'transition-overlay';
         transitionOverlay.style.cssText = `
@@ -105,6 +115,7 @@ async function init() {
             inset: 0;
             z-index: 9999;
             background: #000;
+            cursor: pointer;
         `;
         transitionOverlay.innerHTML = `
             <img src="${transitionBoardImage}" style="
@@ -112,7 +123,29 @@ async function init() {
                 height: 100vh;
                 object-fit: cover;
             ">
+            <div style="
+                position: absolute;
+                bottom: 20%;
+                left: 50%;
+                transform: translateX(-50%);
+                color: white;
+                font-family: Georgia, serif;
+                font-size: 1.5em;
+                text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+                animation: pulse 2s infinite;
+            ">Click to start</div>
         `;
+
+        // Add pulse animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0%, 100% { opacity: 0.7; }
+                50% { opacity: 1; }
+            }
+        `;
+        transitionOverlay.appendChild(style);
+
         document.body.appendChild(transitionOverlay);
 
         // Clear the transition state
@@ -120,8 +153,25 @@ async function init() {
         sessionStorage.removeItem('transitionBoardImage');
     }
 
+    // Handle hidden pieces until click
+    if (hidePieces === 'true') {
+        piecesHidden = true;
+        sessionStorage.removeItem('hidePiecesUntilClick');
+    }
+
+    // Handle hidden chat until opponent joins
+    if (hideChat === 'true') {
+        chatHiddenUntilOpponent = true;
+        sessionStorage.removeItem('hideChatUntilOpponent');
+        // Hide the chat panel initially
+        const chatPanel = document.querySelector('.chat-panel');
+        if (chatPanel) {
+            chatPanel.style.opacity = '0';
+            chatPanel.style.transition = 'opacity 0.5s';
+        }
+    }
+
     // Generate unique player ID for this tab session
-    // Use sessionStorage so each tab gets its own ID (important for same-browser testing)
     playerId = sessionStorage.getItem('playerId');
     if (!playerId) {
         playerId = Math.random().toString(36).substr(2, 9);
@@ -141,27 +191,39 @@ async function init() {
     await loadChat();
 
     // Setup background after board is rendered
-    // When complete, reveal the game by fading out the transition overlay
     requestAnimationFrame(() => {
         setupBackgroundToggle().then(() => {
             // Background is fully loaded and rendered
             if (transitionOverlay) {
-                // Give a tiny bit more time to ensure everything is painted
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        // Fade out the overlay to reveal the game
-                        transitionOverlay.style.transition = 'opacity 0.3s ease-out';
-                        transitionOverlay.style.opacity = '0';
-                        setTimeout(() => {
-                            transitionOverlay.remove();
-                        }, 300);
-                    });
+                // Wait for click to reveal pieces
+                transitionOverlay.addEventListener('click', () => {
+                    // Fade out overlay
+                    transitionOverlay.style.transition = 'opacity 0.5s ease-out';
+                    transitionOverlay.style.opacity = '0';
+                    setTimeout(() => {
+                        transitionOverlay.remove();
+                    }, 500);
+
+                    // Reveal pieces
+                    piecesHidden = false;
+                    updateUI();
+
+                    // Send auto-hello
+                    sendAutoHello();
                 });
+            } else if (piecesHidden) {
+                // No overlay but pieces hidden - reveal on any board click
+                document.getElementById('board').addEventListener('click', function onBoardClick() {
+                    piecesHidden = false;
+                    updateUI();
+                    sendAutoHello();
+                    this.removeEventListener('click', onBoardClick);
+                }, { once: true });
             }
         });
     });
 
-    // Re-apply transforms on resize to keep board and background in sync
+    // Re-apply transforms on resize
     window.addEventListener('resize', () => {
         applyCornerTransform();
         applyBackground();
@@ -170,6 +232,47 @@ async function init() {
     // Start polling for updates
     setInterval(pollGameState, 1000);
     setInterval(pollChat, 1000);
+}
+
+/**
+ * Send an automatic "hello" message when entering the game.
+ * This signals to the opponent that we've joined.
+ */
+async function sendAutoHello() {
+    if (autoHelloSent) return;
+    autoHelloSent = true;
+
+    try {
+        await fetch(`${API_BASE}/games/${gameId}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player: playerId,
+                message: '👋 Hello!'
+            })
+        });
+    } catch (e) {
+        console.error('Failed to send auto-hello:', e);
+    }
+}
+
+/**
+ * Check if opponent has joined (by looking at chat messages).
+ * If so, reveal the chat panel.
+ */
+function checkForOpponent() {
+    if (!chatHiddenUntilOpponent) return;
+
+    // Look for messages from other players
+    const otherPlayerMessages = chatMessages.filter(msg => msg.player !== playerId);
+    if (otherPlayerMessages.length > 0) {
+        // Opponent has joined - reveal chat
+        chatHiddenUntilOpponent = false;
+        const chatPanel = document.querySelector('.chat-panel');
+        if (chatPanel) {
+            chatPanel.style.opacity = '1';
+        }
+    }
 }
 
 /* =============================================================================
@@ -277,6 +380,9 @@ async function pollChat() {
                     addChatMessageToUI(msg.message, 'received');
                 }
             });
+
+            // Check if opponent has joined (reveals chat panel)
+            checkForOpponent();
         }
     } catch (error) {
         // Silently ignore polling errors
@@ -773,8 +879,8 @@ function updateUI() {
         // Reset classes
         square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece/g, '');
 
-        // Set piece
-        if (piece) {
+        // Set piece (hide if piecesHidden is true)
+        if (piece && !piecesHidden) {
             square.textContent = PIECES[piece.color][piece.type];
             square.classList.add(piece.color + '-piece');
         } else {

@@ -199,12 +199,13 @@ function createPageContent(pageData, pageIndex) {
 }
 
 /**
- * Enter a chapter with cinematic transition.
- * 1. Turn page to show album
- * 2. Zoom random chat image to fullscreen
- * 3. Film burn transition to board image
- * 4. Navigate with transition overlay still visible
- * 5. Game renders behind overlay, then we fade out the overlay
+ * Enter a chapter with accelerating book transition.
+ *
+ * 1. Click chapter → page starts turning slowly
+ * 2. Each page turn shows a chat image, getting faster each time
+ * 3. Final turn reveals board image - BAM!
+ * 4. Navigate to game - pieces hidden until click
+ * 5. Opponent's pieces appear when they click (via hello message)
  */
 async function enterChapter(chapterId) {
     console.log('Entering chapter:', chapterId);
@@ -212,59 +213,205 @@ async function enterChapter(chapterId) {
     const chapter = chapterData[chapterId];
     if (!chapter) return;
 
-    // Find the album page for this chapter
-    const albumPageIndex = bookPages.findIndex(p => p.type === 'album' && p.chapterId === chapterId);
-
-    // Step 1: Turn page to show album (if there is one)
-    if (albumPageIndex > currentPageIndex) {
-        const page = document.getElementById('current-page');
-        if (page) {
-            page.classList.add('flipped');
-            await sleep(500);
-            currentPageIndex += 2;
-            renderBookPages();
-            await sleep(300);
-        }
-    }
-
-    // Get chat images for this chapter
-    const chatImages = chapter.chatImages || [];
-
-    // Step 2: Pick a random chat image (or use chapter thumbnail if no chat images)
-    let zoomImagePath;
-    if (chatImages.length > 0) {
-        const randomChat = chatImages[Math.floor(Math.random() * chatImages.length)];
-        zoomImagePath = randomChat.path;
-    } else {
-        zoomImagePath = chapter.thumbnail;
-    }
-
-    // Get a board image for the final reveal
+    // Get a board image for the game
     const boardImage = chapter.boardImages[Math.floor(Math.random() * chapter.boardImages.length)];
     const boardImagePath = `chapters/${chapterId}/board/${boardImage.file}`;
 
-    // Step 3: Zoom the chat image to fullscreen
-    await zoomToFullscreen(zoomImagePath);
+    // Get chat images for the rapid page turns
+    const chatImages = chapter.chatImages || [];
 
-    // Step 4: Hold while showing chat image
-    await sleep(2000);
+    // Create fullscreen book for the accelerating transition
+    const fullscreenBook = createAcceleratingBook(boardImagePath, chatImages);
+    document.body.appendChild(fullscreenBook);
 
-    // Step 5: Film burn transition to board image
-    await splitTransition(zoomImagePath, boardImagePath);
+    // Fade in fullscreen book, fade out original
+    await sleep(50);
+    if (bookOverlay) {
+        bookOverlay.style.transition = 'opacity 0.3s';
+        bookOverlay.style.opacity = '0.5';
+    }
+    fullscreenBook.style.transition = 'opacity 0.3s';
+    fullscreenBook.style.opacity = '1';
 
-    // Step 6: DON'T hide the WebGPU canvas yet - keep showing board image
-    // Store the board image path for the game to use for reveal
+    await sleep(300);
+
+    // Hide original book
+    if (bookOverlay) {
+        bookOverlay.style.display = 'none';
+    }
+
+    // Run the accelerating page turns
+    await runAcceleratingPageTurns(fullscreenBook, chatImages, boardImagePath);
+
+    // Store state for game and navigate
     sessionStorage.setItem('transitionBoardImage', boardImagePath);
     sessionStorage.setItem('transitionActive', 'true');
+    sessionStorage.setItem('hidePiecesUntilClick', 'true');
+    sessionStorage.setItem('hideChatUntilOpponent', 'true');
 
-    // Step 7: Navigate - the WebGPU canvas persists through navigation
-    // The game will handle revealing itself when ready
     const gameUrl = await createGameUrl(chapterId, boardImage.file);
     window.location.href = gameUrl;
 }
 
 /**
+ * Create the fullscreen book element for accelerating transition.
+ */
+function createAcceleratingBook(boardImagePath, chatImages) {
+    const container = document.createElement('div');
+    container.className = 'accelerating-book-overlay';
+    container.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.95);
+        opacity: 0;
+    `;
+
+    container.innerHTML = `
+        <div class="accel-book" style="
+            width: 70vw;
+            height: 80vh;
+            perspective: 2000px;
+            position: relative;
+        ">
+            <div class="accel-page-container" style="
+                position: relative;
+                width: 100%;
+                height: 100%;
+            ">
+                <!-- Pages will be dynamically added here -->
+            </div>
+        </div>
+    `;
+
+    return container;
+}
+
+/**
+ * Run the accelerating page turn animation.
+ * Starts slow, each turn gets faster, final turn reveals board.
+ */
+async function runAcceleratingPageTurns(container, chatImages, boardImagePath) {
+    const pageContainer = container.querySelector('.accel-page-container');
+
+    // Use up to 6 chat images, or repeat if fewer
+    const imagesToShow = [];
+    if (chatImages.length > 0) {
+        for (let i = 0; i < 6; i++) {
+            imagesToShow.push(chatImages[i % chatImages.length].path);
+        }
+    } else {
+        // No chat images - just show board after brief delay
+        await showFinalBoard(pageContainer, boardImagePath);
+        return;
+    }
+
+    // Add board as final image
+    imagesToShow.push(boardImagePath);
+
+    // Timing: starts at 800ms, decreases by ~40% each turn
+    // 800 → 480 → 288 → 173 → 104 → 62 → 50 (final)
+    let timing = 800;
+    const speedFactor = 0.6;
+    const minTiming = 50;
+
+    for (let i = 0; i < imagesToShow.length; i++) {
+        const isLast = i === imagesToShow.length - 1;
+        const imagePath = imagesToShow[i];
+
+        // Create the page
+        const page = document.createElement('div');
+        page.className = 'accel-page';
+        page.style.cssText = `
+            position: absolute;
+            inset: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            transform-origin: left center;
+            transform-style: preserve-3d;
+            transition: transform ${timing}ms ease-in-out;
+            z-index: ${100 - i};
+        `;
+
+        page.innerHTML = `
+            <div style="
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                backface-visibility: hidden;
+                background: #f5f0e6;
+            ">
+                <img src="${imagePath}" style="
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                ">
+            </div>
+            <div style="
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                backface-visibility: hidden;
+                transform: rotateY(180deg);
+                background: #f5f0e6;
+            "></div>
+        `;
+
+        pageContainer.appendChild(page);
+
+        // Show page briefly
+        await sleep(timing * 0.3);
+
+        // If not last, flip it away
+        if (!isLast) {
+            page.style.transform = 'rotateY(-180deg)';
+            await sleep(timing * 0.7);
+        } else {
+            // Last page (board) - hold and zoom
+            await sleep(300);
+
+            // Zoom effect
+            page.style.transition = 'transform 0.5s ease-out';
+            page.style.transform = 'scale(1.05)';
+            container.style.transition = 'background 0.5s';
+            container.style.background = 'transparent';
+
+            await sleep(500);
+        }
+
+        // Decrease timing for next turn (accelerate!)
+        timing = Math.max(minTiming, timing * speedFactor);
+    }
+}
+
+/**
+ * Show the final board when there are no chat images.
+ */
+async function showFinalBoard(pageContainer, boardImagePath) {
+    const page = document.createElement('div');
+    page.style.cssText = `
+        position: absolute;
+        inset: 0;
+        border-radius: 8px;
+        overflow: hidden;
+    `;
+    page.innerHTML = `
+        <img src="${boardImagePath}" style="
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        ">
+    `;
+    pageContainer.appendChild(page);
+    await sleep(500);
+}
+
+/**
  * Zoom an image from album to fullscreen.
+ * (Legacy - kept for potential future use)
  */
 async function zoomToFullscreen(imagePath) {
     const layer = document.getElementById('cinematic-layer');
