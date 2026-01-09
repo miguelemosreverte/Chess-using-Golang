@@ -208,10 +208,10 @@ async function init() {
                     }, 500);
 
                     // Reveal only MY pieces (based on assigned color or default to white if first player)
-                    // If no color assigned yet, default to white (first player)
+                    // Keep piecesHidden = true so opponent pieces stay hidden until they join
                     const myPieceColor = myColor || 'white';
                     revealedPieces = myPieceColor;
-                    piecesHidden = false;
+                    // piecesHidden stays true - only revealedPieces color shows
                     updateUI();
 
                     // Send auto-hello to signal we're ready
@@ -222,7 +222,7 @@ async function init() {
                 document.getElementById('board').addEventListener('click', function onBoardClick() {
                     const myPieceColor = myColor || 'white';
                     revealedPieces = myPieceColor;
-                    piecesHidden = false;
+                    // piecesHidden stays true
                     updateUI();
                     sendAutoHello();
                     this.removeEventListener('click', onBoardClick);
@@ -285,10 +285,9 @@ function checkForOpponent() {
         }
 
         // Reveal opponent's pieces if we're in partial reveal mode
-        if (revealedPieces && revealedPieces !== 'all') {
-            // Opponent's color is opposite of what we revealed
-            const opponentColor = revealedPieces === 'white' ? 'black' : 'white';
-            revealedPieces = 'all'; // Now show all pieces
+        if (piecesHidden && revealedPieces && revealedPieces !== 'all') {
+            // Both players are now ready - show all pieces
+            revealedPieces = 'all';
             updateUI();
         }
     }
@@ -899,12 +898,22 @@ function updateUI() {
         square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece/g, '');
 
         // Set piece (check reveal state)
-        // revealedPieces can be: null (all hidden), 'white', 'black', or 'all'
-        const shouldShowPiece = piece && (
-            !piecesHidden ||
-            revealedPieces === 'all' ||
-            revealedPieces === piece.color
-        );
+        // When piecesHidden is true, only show pieces matching revealedPieces
+        // When piecesHidden is false (normal mode), show all pieces
+        let shouldShowPiece = false;
+        if (piece) {
+            if (!piecesHidden) {
+                // Normal mode - show all pieces
+                shouldShowPiece = true;
+            } else if (revealedPieces === 'all') {
+                // Both players ready - show all
+                shouldShowPiece = true;
+            } else if (revealedPieces === piece.color) {
+                // Only show my color
+                shouldShowPiece = true;
+            }
+            // If piecesHidden && revealedPieces is null or doesn't match, hide
+        }
 
         if (shouldShowPiece) {
             square.textContent = PIECES[piece.color][piece.type];

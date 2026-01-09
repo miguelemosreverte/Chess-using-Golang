@@ -312,8 +312,8 @@ function createAcceleratingBook(boardImagePath, chatImages) {
 
 /**
  * Run the accelerating page turn animation.
- * Starts slow, each turn gets faster, final turn reveals board.
- * Pages have curvature effect using CSS 3D transforms.
+ * Uses WebGPU for realistic curved page geometry with lighting.
+ * Falls back to CSS if WebGPU not available.
  */
 async function runAcceleratingPageTurns(container, chatImages, boardImagePath) {
     const pageContainer = container.querySelector('.accel-page-container');
@@ -333,36 +333,65 @@ async function runAcceleratingPageTurns(container, chatImages, boardImagePath) {
     // Add board as final image
     imagesToShow.push(boardImagePath);
 
-    // Timing: starts slower at 1200ms, decreases by ~30% each turn
-    // 1200 → 840 → 588 → 412 → 288 → 200 (final)
-    let timing = 1200;
-    const speedFactor = 0.7;
-    const minTiming = 200;
+    // Try WebGPU first
+    const useWebGPU = typeof webgpuPageTurn !== 'undefined' && await webgpuPageTurn.init();
+
+    // Timing: starts slower at 1500ms, decreases by ~25% each turn
+    let timing = 1500;
+    const speedFactor = 0.75;
+    const minTiming = 300;
 
     for (let i = 0; i < imagesToShow.length; i++) {
         const isLast = i === imagesToShow.length - 1;
         const imagePath = imagesToShow[i];
 
-        // Create a curved page using multiple segments
-        const page = createCurvedPage(imagePath, timing, 100 - i);
-        pageContainer.appendChild(page);
-
-        // Show page briefly
-        await sleep(timing * 0.4);
-
-        // If not last, flip it away with curve animation
-        if (!isLast) {
-            animateCurvedPageFlip(page, timing);
-            await sleep(timing * 0.8);
+        if (useWebGPU) {
+            // WebGPU animated page turn with curved geometry
+            await webgpuPageTurn.animatePageTurn(imagePath, timing, container);
+            webgpuPageTurn.hide();
         } else {
+            // CSS fallback
+            const page = createCurvedPage(imagePath, timing, 100 - i);
+            pageContainer.appendChild(page);
+
+            await sleep(timing * 0.4);
+
+            if (!isLast) {
+                animateCurvedPageFlip(page, timing);
+                await sleep(timing * 0.8);
+            }
+        }
+
+        if (isLast) {
             // Last page (board) - hold and zoom
             await sleep(400);
 
-            // Zoom effect - expand to fill more of screen
-            const pageInner = page.querySelector('.curved-page-inner');
-            if (pageInner) {
-                pageInner.style.transition = 'transform 0.6s ease-out';
-                pageInner.style.transform = 'scale(1.15)';
+            // Show final board fullscreen
+            pageContainer.innerHTML = `
+                <div style="
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">
+                    <img src="${boardImagePath}" style="
+                        max-width: 90%;
+                        max-height: 90%;
+                        object-fit: contain;
+                        border-radius: 8px;
+                        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+                        transition: transform 0.6s ease-out;
+                    ">
+                </div>
+            `;
+
+            await sleep(100);
+
+            // Zoom effect
+            const boardImg = pageContainer.querySelector('img');
+            if (boardImg) {
+                boardImg.style.transform = 'scale(1.05)';
             }
             container.style.transition = 'background 0.6s';
             container.style.background = 'transparent';
