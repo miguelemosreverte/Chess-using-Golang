@@ -14,10 +14,12 @@ html, body {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
-    background: url('wood-bg.jpg');
+    /* Wood texture as base layer, chess photo on top (set by JS) */
+    background-color: #3d2817;
+    background-image: url('wood-bg.jpg');
     background-size: cover;
     background-position: center;
-    background-attachment: fixed;
+    background-repeat: no-repeat;
     min-height: 100vh;
     color: #333;
     font-weight: 300;

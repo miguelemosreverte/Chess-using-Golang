@@ -424,9 +424,24 @@ function applyCornerTransform() {
         // Use the smallest scale to ensure everything fits
         const scale = Math.min(scaleByBoard, scaleByViewportW, scaleByViewportH);
 
-        // Current viewport center
-        const curCenterX = window.innerWidth / 2;
-        const curCenterY = window.innerHeight / 2;
+        // Calculate where to anchor the content
+        // If scaled content is smaller than viewport, push to top-left for chat space
+        const scaledWidth = calibrationViewport.width * scale;
+        const scaledHeight = calibrationViewport.height * scale;
+
+        // Default to center, but shift if content doesn't fill viewport
+        let curCenterX = window.innerWidth / 2;
+        let curCenterY = window.innerHeight / 2;
+
+        // If width doesn't fill viewport, push left (chat goes right)
+        if (scaledWidth < window.innerWidth) {
+            curCenterX = scaledWidth / 2;
+        }
+
+        // If height doesn't fill viewport, push up (chat goes bottom)
+        if (scaledHeight < window.innerHeight) {
+            curCenterY = scaledHeight / 2;
+        }
 
         // Transform corners: convert from calibration viewport to current viewport
         dst = corners.map(c => {
@@ -640,7 +655,9 @@ const imageDimensions = {};
 
 function applyBackground() {
     const bgUrl = BACKGROUNDS[currentBgIndex];
-    document.body.style.backgroundImage = `url('${bgUrl}')`;
+    // Layer: chess photo on top, wood texture behind (no tiling)
+    document.body.style.backgroundImage = `url('${bgUrl}'), url('wood-bg.jpg')`;
+    document.body.style.backgroundRepeat = 'no-repeat, no-repeat';
 
     // Scale background to match board - so they stay locked together on resize
     if (corners.length === 4) {
@@ -656,15 +673,15 @@ function applyBackground() {
             };
             img.src = bgUrl;
             // Fallback while loading
-            document.body.style.backgroundSize = 'cover';
-            document.body.style.backgroundPosition = 'center';
+            document.body.style.backgroundSize = 'cover, cover';
+            document.body.style.backgroundPosition = 'center, center';
         }
         return;
     }
 
     // Fallback to cover if no corners
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundSize = 'cover, cover';
+    document.body.style.backgroundPosition = 'center, center';
 }
 
 function applyBackgroundWithDimensions(imgDim) {
@@ -677,8 +694,8 @@ function applyBackgroundWithDimensions(imgDim) {
 
     // Need calibration data to calculate fixed size
     if (!calibrationViewport) {
-        document.body.style.backgroundSize = 'cover';
-        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundSize = 'cover, cover';
+        document.body.style.backgroundPosition = 'center, center';
         return;
     }
 
@@ -729,11 +746,35 @@ function applyBackgroundWithDimensions(imgDim) {
     const boardCenterY = boardRect.top + boardRect.height / 2;
 
     // Position image so boardOnImg aligns with current board center
-    const bgPosX = boardCenterX - boardOnImgX;
-    const bgPosY = boardCenterY - boardOnImgY;
+    let bgPosX = boardCenterX - boardOnImgX;
+    let bgPosY = boardCenterY - boardOnImgY;
 
-    document.body.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
-    document.body.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
+    // If image doesn't cover viewport, push to top-left to leave room for chat
+    // Vertical: push up, chat goes bottom
+    // Horizontal: push left, chat goes right
+    const scaledWidth = calVW * scale;
+    const scaledHeight = calVH * scale;
+
+    if (scaledHeight < window.innerHeight) {
+        // Content doesn't fill height - align to top
+        // Recalculate Y position based on top alignment
+        const calCornersCenterY = ((minY + maxY) / 2) * calVH;
+        const newCenterY = scaledHeight / 2;
+        const boardCenterY = boardRect.top + boardRect.height / 2;
+        bgPosY = boardCenterY - (calCornersCenterY * scale + (calDisplayHeight * scale - scaledHeight) / 2);
+    }
+
+    if (scaledWidth < window.innerWidth) {
+        // Content doesn't fill width - align to left
+        const calCornersCenterX = ((minX + maxX) / 2) * calVW;
+        const newCenterX = scaledWidth / 2;
+        const boardCenterX = boardRect.left + boardRect.width / 2;
+        bgPosX = boardCenterX - (calCornersCenterX * scale + (calDisplayWidth * scale - scaledWidth) / 2);
+    }
+
+    // Chess photo size and position, wood texture covers full viewport
+    document.body.style.backgroundSize = `${displayWidth}px ${displayHeight}px, cover`;
+    document.body.style.backgroundPosition = `${bgPosX}px ${bgPosY}px, center`;
 }
 
 function applyBorder() {
