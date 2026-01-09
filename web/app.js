@@ -335,20 +335,6 @@ function resetBoardTransform() {
     if (container) {
         container.style.transform = '';
     }
-    resetUITransform();
-}
-
-function resetUITransform() {
-    const uiElements = [
-        document.querySelector('.controls'),
-        document.querySelector('.chat-panel')
-    ];
-
-    uiElements.forEach(el => {
-        if (el) {
-            el.style.transform = '';
-        }
-    });
 }
 
 function applyCornerTransform() {
