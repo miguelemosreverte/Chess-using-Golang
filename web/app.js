@@ -36,7 +36,7 @@ function setupMenuToggle() {
         if (document.body.classList.contains('menu-visible')) {
             if (e.target.closest('button') || e.target.closest('.controls') ||
                 e.target.closest('.move-history') || e.target.closest('.replay-controls') ||
-                e.target.closest('.undo-panel')) return;
+                e.target.closest('.undo-panel') || e.target.closest('.chat-panel')) return;
         }
         document.body.classList.toggle('menu-visible');
     });
@@ -604,6 +604,29 @@ function fileRankToNotation(file, rank) {
 // Capitalize first letter
 function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// Send chat message (local only, no server)
+function sendChat() {
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    if (!message) return;
+
+    const messagesContainer = document.getElementById('chat-messages');
+    const messageEl = document.createElement('div');
+    messageEl.className = 'chat-message';
+
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    messageEl.innerHTML = `<span class="timestamp">${timestamp}</span>${message}`;
+    messagesContainer.appendChild(messageEl);
+
+    // Scroll to bottom
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    // Clear input
+    input.value = '';
 }
 
 // Start the app

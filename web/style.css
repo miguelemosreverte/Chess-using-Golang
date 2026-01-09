@@ -10,7 +10,8 @@
 .game-info,
 .controls,
 .move-history,
-.replay-controls {
+.replay-controls,
+.chat-panel {
     opacity: 0;
     pointer-events: none;
 }
@@ -18,7 +19,8 @@
 body.menu-visible .game-info,
 body.menu-visible .controls,
 body.menu-visible .move-history,
-body.menu-visible .replay-controls {
+body.menu-visible .replay-controls,
+body.menu-visible .chat-panel {
     opacity: 1;
     pointer-events: auto;
 }
@@ -732,4 +734,113 @@ button:focus {
 #history span[style*="background"] {
     background: rgba(180, 140, 80, 0.6) !important;
     color: #fff8e8;
+}
+
+/* Chat Panel - Thin border style */
+.chat-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 320px;
+    height: 280px;
+    background: transparent;
+    border: 1px solid rgba(101, 67, 33, 0.4);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+}
+
+.chat-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(101, 67, 33, 0.4);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #4a3520;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.chat-message {
+    font-size: 0.8rem;
+    color: #4a3520;
+    line-height: 1.4;
+    word-wrap: break-word;
+}
+
+.chat-message .timestamp {
+    font-size: 0.7rem;
+    color: rgba(74, 53, 32, 0.6);
+    margin-right: 6px;
+}
+
+.chat-input-area {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(101, 67, 33, 0.4);
+}
+
+.chat-input {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    background: transparent;
+    border: 1px solid rgba(101, 67, 33, 0.4);
+    border-radius: 3px;
+    color: #4a3520;
+    outline: none;
+}
+
+.chat-input::placeholder {
+    color: rgba(74, 53, 32, 0.5);
+}
+
+.chat-input:focus {
+    border-color: rgba(101, 67, 33, 0.7);
+}
+
+.chat-send-btn {
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    background: transparent;
+    border: 1px solid rgba(101, 67, 33, 0.4);
+    border-radius: 3px;
+    color: #4a3520;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    mix-blend-mode: normal;
+    box-shadow: none;
+}
+
+.chat-send-btn:hover {
+    border-color: rgba(101, 67, 33, 0.7);
+    background: rgba(101, 67, 33, 0.1);
+}
+
+.chat-messages::-webkit-scrollbar {
+    width: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(101, 67, 33, 0.3);
+    border-radius: 2px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(101, 67, 33, 0.5);
 }

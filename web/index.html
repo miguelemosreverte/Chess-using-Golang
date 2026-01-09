@@ -64,6 +64,16 @@
         </div>
     </div>
 
+    <!-- Chat panel -->
+    <div class="chat-panel">
+        <div class="chat-header">Chat</div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()">
+            <button class="chat-send-btn" onclick="sendChat()">Send</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
