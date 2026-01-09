@@ -18,6 +18,36 @@ let replayIndex = -1; // -1 means live view, >= 0 means viewing history
 let previousStatus = null; // Track status changes for animations
 let singleMoveHint = null; // { from, to } when in check with only one legal move
 
+// Background images for testing
+const BACKGROUNDS = [
+    'wood-bg.jpg',
+    'bg-01.png', 'bg-02.png', 'bg-03.png', 'bg-04.png',
+    'bg-05.png', 'bg-06.png', 'bg-07.png', 'bg-08.png',
+    'bg-09.png', 'bg-10.png', 'bg-11.png'
+];
+let currentBgIndex = 0;
+
+// Saved configurations per background image
+// corners are stored as percentages of window size (0-1)
+const BG_CONFIGS = {
+    'bg-09.png': {
+        corners: [
+            {x: 0.3069, y: 0.1311},
+            {x: 0.2996, y: 0.8175},
+            {x: 0.7050, y: 0.8239},
+            {x: 0.7011, y: 0.1362}
+        ],
+        border: false
+    }
+};
+
+// Dev controls for board positioning
+let devMode = false;
+let borderHidden = false;
+let corners = []; // [{x, y}, ...] as percentages
+let cornerHandles = []; // DOM elements for dragging
+let draggingHandle = null;
+
 // Initialize the app
 async function init() {
     renderBoard();
@@ -25,12 +55,429 @@ async function init() {
     setupMenuToggle();
     document.getElementById('new-game').addEventListener('click', newGame);
     await newGame();
+    // Setup background after board is rendered
+    requestAnimationFrame(() => {
+        setupBackgroundToggle();
+    });
 }
 
-// Toggle menu visibility on click outside board
+// Background toggle with arrow keys and draggable corner dev controls
+function setupBackgroundToggle() {
+    const params = new URLSearchParams(window.location.search);
+
+    // Load background from URL
+    const bgParam = params.get('bg');
+    if (bgParam) {
+        const index = BACKGROUNDS.indexOf(bgParam);
+        if (index >= 0) {
+            currentBgIndex = index;
+        }
+    }
+
+    // Load config from server or saved config
+    loadBgConfig();
+    applyBackground();
+
+    // Key listeners
+    document.addEventListener('keydown', (e) => {
+        // Tab: toggle dev mode
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            devMode = !devMode;
+            toggleDevMode();
+            return;
+        }
+
+        // Dev mode controls only
+        if (!devMode) return;
+
+        // Arrow keys: change background
+        if (e.key === 'ArrowLeft') {
+            currentBgIndex = (currentBgIndex - 1 + BACKGROUNDS.length) % BACKGROUNDS.length;
+            loadBgConfig();
+            applyBackground();
+        } else if (e.key === 'ArrowRight') {
+            currentBgIndex = (currentBgIndex + 1) % BACKGROUNDS.length;
+            loadBgConfig();
+            applyBackground();
+        }
+        // Enter: save config to server
+        else if (e.key === 'Enter') {
+            saveConfigToServer();
+        }
+        // 0: reset corners to default board position
+        else if (e.key === '0') {
+            initDefaultCorners();
+            updateCornerHandles();
+            applyCornerTransform();
+        }
+        // B: toggle border
+        else if (e.key === 'b' || e.key === 'B') {
+            borderHidden = !borderHidden;
+            applyBorder();
+        }
+    });
+
+    // Drag handling
+    document.addEventListener('mousedown', (e) => {
+        if (!devMode) return;
+        const handle = e.target.closest('.corner-handle');
+        if (handle) {
+            draggingHandle = handle;
+            e.preventDefault();
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!draggingHandle) return;
+        const index = parseInt(draggingHandle.dataset.index);
+        corners[index] = {
+            x: e.clientX / window.innerWidth,
+            y: e.clientY / window.innerHeight
+        };
+        updateHandlePosition(draggingHandle, e.clientX, e.clientY);
+        applyCornerTransform();
+    });
+
+    document.addEventListener('mouseup', () => {
+        draggingHandle = null;
+    });
+}
+
+function toggleDevMode() {
+    const legend = document.querySelector('.dev-legend');
+    if (legend) {
+        legend.style.display = devMode ? 'block' : 'none';
+    }
+    if (devMode) {
+        document.body.classList.add('dev-mode');
+        // Initialize corners if empty
+        if (corners.length !== 4) {
+            initDefaultCorners();
+        }
+        createCornerHandles();
+    } else {
+        document.body.classList.remove('dev-mode');
+        removeCornerHandles();
+    }
+}
+
+// Initialize corners to current board position
+function initDefaultCorners() {
+    const board = document.getElementById('board');
+    if (!board) return;
+
+    const rect = board.getBoundingClientRect();
+    corners = [
+        { x: rect.left / window.innerWidth, y: rect.top / window.innerHeight },
+        { x: rect.right / window.innerWidth, y: rect.top / window.innerHeight },
+        { x: rect.right / window.innerWidth, y: rect.bottom / window.innerHeight },
+        { x: rect.left / window.innerWidth, y: rect.bottom / window.innerHeight }
+    ];
+}
+
+// Load saved config for current background
+async function loadBgConfig() {
+    const bgName = BACKGROUNDS[currentBgIndex];
+
+    // Try to load from server first
+    try {
+        const response = await fetch('/config/' + bgName);
+        if (response.ok) {
+            const config = await response.json();
+            corners = [...config.corners];
+            borderHidden = config.border === false;
+            applyCornerTransform();
+            applyBorder();
+
+            // Update handles if in dev mode
+            if (devMode) {
+                updateCornerHandles();
+            }
+            return;
+        }
+    } catch (e) {
+        // Server config not found, try local
+    }
+
+    // Fall back to local BG_CONFIGS
+    const config = BG_CONFIGS[bgName];
+    if (config) {
+        corners = [...config.corners];
+        borderHidden = config.border === false;
+        applyCornerTransform();
+        applyBorder();
+    } else {
+        corners = [];
+        borderHidden = false;
+        resetBoardTransform();
+        applyBorder();
+    }
+
+    // Update handles if in dev mode
+    if (devMode) {
+        if (corners.length !== 4) {
+            initDefaultCorners();
+        }
+        updateCornerHandles();
+    }
+}
+
+// Create draggable corner handles
+function createCornerHandles() {
+    removeCornerHandles();
+
+    const labels = ['TL', 'TR', 'BR', 'BL'];
+    corners.forEach((corner, i) => {
+        const handle = document.createElement('div');
+        handle.className = 'corner-handle';
+        handle.dataset.index = i;
+        handle.textContent = labels[i];
+        handle.style.left = (corner.x * window.innerWidth) + 'px';
+        handle.style.top = (corner.y * window.innerHeight) + 'px';
+        document.body.appendChild(handle);
+        cornerHandles.push(handle);
+    });
+}
+
+function updateCornerHandles() {
+    corners.forEach((corner, i) => {
+        if (cornerHandles[i]) {
+            cornerHandles[i].style.left = (corner.x * window.innerWidth) + 'px';
+            cornerHandles[i].style.top = (corner.y * window.innerHeight) + 'px';
+        }
+    });
+}
+
+function updateHandlePosition(handle, x, y) {
+    handle.style.left = x + 'px';
+    handle.style.top = y + 'px';
+}
+
+function removeCornerHandles() {
+    cornerHandles.forEach(h => h.remove());
+    cornerHandles = [];
+}
+
+// Save config to server
+async function saveConfigToServer() {
+    const bgName = BACKGROUNDS[currentBgIndex];
+    const config = {
+        corners: corners,
+        border: !borderHidden
+    };
+
+    try {
+        const response = await fetch('/config/' + bgName, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+
+        if (response.ok) {
+            updateLegendStatus('Saved!');
+            // Update local config too
+            BG_CONFIGS[bgName] = { corners: [...corners], border: !borderHidden };
+        } else {
+            updateLegendStatus('Save failed');
+        }
+    } catch (e) {
+        updateLegendStatus('Save error: ' + e.message);
+    }
+
+    setTimeout(() => updateLegendStatus(''), 2000);
+}
+
+function resetBoardTransform() {
+    const container = document.querySelector('.board-container');
+    if (container) {
+        container.style.transform = '';
+    }
+}
+
+function applyCornerTransform() {
+    if (corners.length !== 4) return;
+
+    const container = document.querySelector('.board-container');
+    const board = document.getElementById('board');
+    if (!container || !board) return;
+
+    // Reset transform first to get natural position
+    container.style.transform = '';
+    container.style.transformOrigin = '0 0';
+
+    // Force reflow to get accurate rect
+    void board.offsetHeight;
+
+    // Get the board's natural position and size
+    const rect = board.getBoundingClientRect();
+
+    // Source corners relative to element (0,0 is top-left of board)
+    const src = [
+        { x: 0, y: 0 },                          // TL
+        { x: rect.width, y: 0 },                 // TR
+        { x: rect.width, y: rect.height },       // BR
+        { x: 0, y: rect.height }                 // BL
+    ];
+
+    // Convert percentage corners to pixels, relative to board's original position
+    const dst = corners.map(c => ({
+        x: c.x * window.innerWidth - rect.left,
+        y: c.y * window.innerHeight - rect.top
+    }));
+
+    // Calculate perspective transform
+    const matrix = computeTransformMatrix(src, dst);
+    if (matrix) {
+        container.style.transform = matrix;
+    }
+}
+
+// Compute perspective transform (matrix3d) from 4 corner correspondences
+function computeTransformMatrix(src, dst) {
+    // Sort corners: find TL, TR, BR, BL based on position
+    const sortCorners = (corners) => {
+        const sorted = [...corners].sort((a, b) => a.y - b.y);
+        const top = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
+        const bottom = sorted.slice(2, 4).sort((a, b) => a.x - b.x);
+        return [top[0], top[1], bottom[1], bottom[0]]; // TL, TR, BR, BL
+    };
+
+    const s = sortCorners(src);
+    const d = sortCorners(dst);
+
+    // Compute homography matrix using the general perspective transform formula
+    // We need to solve for the 8 unknowns in the perspective transform
+    const H = computeHomography(
+        s[0].x, s[0].y, s[1].x, s[1].y, s[2].x, s[2].y, s[3].x, s[3].y,
+        d[0].x, d[0].y, d[1].x, d[1].y, d[2].x, d[2].y, d[3].x, d[3].y
+    );
+
+    if (!H) return null;
+
+    // Convert 3x3 homography to CSS matrix3d (4x4)
+    // matrix3d(a1, b1, 0, c1, a2, b2, 0, c2, 0, 0, 1, 0, a3, b3, 0, c3)
+    const matrix3d = `matrix3d(
+        ${H[0]}, ${H[3]}, 0, ${H[6]},
+        ${H[1]}, ${H[4]}, 0, ${H[7]},
+        0, 0, 1, 0,
+        ${H[2]}, ${H[5]}, 0, ${H[8]}
+    )`;
+
+    return matrix3d;
+}
+
+// Compute 3x3 homography matrix from 4 point correspondences
+function computeHomography(x0, y0, x1, y1, x2, y2, x3, y3, X0, Y0, X1, Y1, X2, Y2, X3, Y3) {
+    // Set up the system of equations Ah = b
+    const A = [
+        [x0, y0, 1, 0, 0, 0, -X0*x0, -X0*y0],
+        [0, 0, 0, x0, y0, 1, -Y0*x0, -Y0*y0],
+        [x1, y1, 1, 0, 0, 0, -X1*x1, -X1*y1],
+        [0, 0, 0, x1, y1, 1, -Y1*x1, -Y1*y1],
+        [x2, y2, 1, 0, 0, 0, -X2*x2, -X2*y2],
+        [0, 0, 0, x2, y2, 1, -Y2*x2, -Y2*y2],
+        [x3, y3, 1, 0, 0, 0, -X3*x3, -X3*y3],
+        [0, 0, 0, x3, y3, 1, -Y3*x3, -Y3*y3]
+    ];
+    const b = [X0, Y0, X1, Y1, X2, Y2, X3, Y3];
+
+    // Solve using Gaussian elimination
+    const h = solveLinearSystem(A, b);
+    if (!h) return null;
+
+    // Return as 3x3 matrix (row-major): [h0, h1, h2, h3, h4, h5, h6, h7, 1]
+    return [...h, 1];
+}
+
+// Gaussian elimination with partial pivoting
+function solveLinearSystem(A, b) {
+    const n = A.length;
+    const aug = A.map((row, i) => [...row, b[i]]);
+
+    for (let col = 0; col < n; col++) {
+        // Find pivot
+        let maxRow = col;
+        for (let row = col + 1; row < n; row++) {
+            if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) {
+                maxRow = row;
+            }
+        }
+        [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
+
+        if (Math.abs(aug[col][col]) < 1e-10) return null;
+
+        // Eliminate
+        for (let row = col + 1; row < n; row++) {
+            const factor = aug[row][col] / aug[col][col];
+            for (let j = col; j <= n; j++) {
+                aug[row][j] -= factor * aug[col][j];
+            }
+        }
+    }
+
+    // Back substitution
+    const x = new Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+        x[i] = aug[i][n];
+        for (let j = i + 1; j < n; j++) {
+            x[i] -= aug[i][j] * x[j];
+        }
+        x[i] /= aug[i][i];
+    }
+
+    return x;
+}
+
+function applyBackground() {
+    document.body.style.backgroundImage = `url('${BACKGROUNDS[currentBgIndex]}')`;
+}
+
+function applyBorder() {
+    const container = document.querySelector('.board-container');
+    if (container) {
+        container.classList.toggle('no-border', borderHidden);
+    }
+}
+
+function updateLegendStatus(text) {
+    let status = document.getElementById('legend-status');
+    if (!status) {
+        const legend = document.querySelector('.dev-legend');
+        if (legend) {
+            status = document.createElement('div');
+            status.id = 'legend-status';
+            status.style.color = '#4f8';
+            status.style.marginTop = '6px';
+            legend.appendChild(status);
+        }
+    }
+    if (status) status.textContent = text;
+}
+
+function updateDevUrl() {
+    const url = new URL(window.location);
+    url.searchParams.set('bg', BACKGROUNDS[currentBgIndex]);
+    if (corners.length === 4) {
+        url.searchParams.set('corners', JSON.stringify(corners));
+    } else {
+        url.searchParams.delete('corners');
+    }
+    if (borderHidden) {
+        url.searchParams.set('border', '0');
+    } else {
+        url.searchParams.delete('border');
+    }
+    window.history.replaceState({}, '', url);
+}
+
+// Toggle menu visibility on click outside board (disabled in dev mode)
 function setupMenuToggle() {
     const board = document.getElementById('board');
     document.addEventListener('click', (e) => {
+        // Skip if in dev mode
+        if (devMode) return;
+
         if (board.contains(e.target)) return;
         if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) return;
         if (document.body.classList.contains('menu-visible')) {

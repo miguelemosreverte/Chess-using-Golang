@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -13,6 +16,7 @@ func main() {
 	// API routes
 	mux.HandleFunc("/games", gamesHandler)
 	mux.HandleFunc("/games/", gameHandler)
+	mux.HandleFunc("/config/", configHandler)
 
 	// Serve static files from web directory
 	fs := http.FileServer(http.Dir("../web"))
@@ -89,4 +93,53 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// configHandler handles saving/loading background configs
+func configHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract image name from path: /config/bg-09.png
+	imageName := strings.TrimPrefix(r.URL.Path, "/config/")
+	if imageName == "" {
+		writeError(w, http.StatusBadRequest, "missing image name")
+		return
+	}
+
+	configPath := filepath.Join("..", "web", imageName+".json")
+
+	switch r.Method {
+	case http.MethodGet:
+		// Load config
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "config not found")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+
+	case http.MethodPost:
+		// Save config
+		var config map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+
+		data, err := json.MarshalIndent(config, "", "  ")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to encode")
+			return
+		}
+
+		if err := os.WriteFile(configPath, data, 0644); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to save: "+err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"saved"}`))
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
