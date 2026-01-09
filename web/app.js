@@ -129,6 +129,9 @@ async function setupBackgroundToggle() {
     }
     localStorage.setItem('lastBgIndex', currentBgIndex.toString());
 
+    // Update URL with bg param so sharing URL gives same background
+    updateBgUrl();
+
     // Load config from server FIRST, then apply background with correct data
     await loadBgConfig();
     // Wait for next frame to ensure board transform is rendered before measuring
@@ -855,6 +858,13 @@ function updateLegendStatus(text) {
         }
     }
     if (status) status.textContent = text;
+}
+
+// Update URL with bg param so shared URLs show the same background
+function updateBgUrl() {
+    const url = new URL(window.location);
+    url.searchParams.set('bg', BACKGROUNDS[currentBgIndex]);
+    window.history.replaceState({}, '', url);
 }
 
 function updateDevUrl() {
