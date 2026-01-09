@@ -1,38 +1,9 @@
 /* Chess UI - Blend Mode Integration with Real Wood Textures */
-/* UI hidden by default - tap/click outside board to toggle */
 
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-}
-
-/* =============================================================================
-   MENU VISIBILITY TOGGLE
-   - All UI elements hidden by default except the board
-   - Tap/click outside the board to show/hide menus
-   ============================================================================= */
-
-.game-info,
-.controls,
-.move-history,
-.replay-controls {
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-}
-
-body.menu-visible .game-info,
-body.menu-visible .controls,
-body.menu-visible .move-history,
-body.menu-visible .replay-controls {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-/* Undo panel always visible when present (important game state) */
-.undo-panel {
-    transition: opacity 0.3s ease;
 }
 
 body {
