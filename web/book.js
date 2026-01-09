@@ -248,13 +248,13 @@ async function enterChapter(chapterId) {
     // Step 4: Hold for 2-3 seconds
     await sleep(2500);
 
-    // Step 5: Create the game URL
-    const gameUrl = await createGameUrl(chapterId);
+    // Step 5: Create the game URL with the specific board image
+    const gameUrl = await createGameUrl(chapterId, boardImage.file);
 
     // Step 6: Split animation - chat to corner, board to fullscreen
     await splitTransition(zoomImagePath, boardImagePath);
 
-    // Step 7: Navigate to game
+    // Step 7: Navigate to game immediately (no fade - we're already showing the board)
     window.location.href = gameUrl;
 }
 
@@ -323,6 +323,7 @@ async function zoomToFullscreen(imagePath) {
  * Split transition: Film burn effect - board burns through chat image.
  * Uses WebGPU shaders for the classic cinema cross-dissolve with light leaks.
  * Chat image fades OUT, board image fades IN (and stays visible).
+ * No fade out at the end - we navigate directly since the board is already visible.
  */
 async function splitTransition(chatImagePath, boardImagePath) {
     const layer = document.getElementById('cinematic-layer');
@@ -334,60 +335,19 @@ async function splitTransition(chatImagePath, boardImagePath) {
     // The board is the DESTINATION - it's what remains after the transition
     await filmBurnTransition(chatImagePath, boardImagePath, 2000);
 
-    // Now board is fully visible on the WebGPU canvas
-    // Add the chat image on top, then animate it shrinking to corner
-    const chatCorner = document.createElement('img');
-    chatCorner.src = chatImagePath;
-    Object.assign(chatCorner.style, {
-        position: 'fixed',
-        inset: '0',
-        width: '100vw',
-        height: '100vh',
-        objectFit: 'cover',
-        borderRadius: '0',
-        boxShadow: 'none',
-        transition: 'all 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-        zIndex: '2001',
-        opacity: '0'  // Start invisible
-    });
-    document.body.appendChild(chatCorner);
-
-    // Brief pause, then start shrinking animation
-    await sleep(50);
-
-    // Make visible and shrink to corner
-    Object.assign(chatCorner.style, {
-        inset: 'auto',
-        right: '20px',
-        bottom: '20px',
-        left: 'auto',
-        top: 'auto',
-        width: '280px',
-        height: '200px',
-        borderRadius: '12px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        opacity: '1'
-    });
-
-    await sleep(800);
-
-    // Fade everything out before navigation
-    chatCorner.style.opacity = '0';
-    hideFilmBurn();
-
-    await sleep(300);
-
-    chatCorner.remove();
+    // Board is now fully visible - no fade out needed
+    // The navigation will happen immediately after this function returns
 }
 
 /**
  * Create a new game and return the URL.
+ * Includes chapter and specific board image so the game loads with the same image shown in transition.
  */
-async function createGameUrl(chapterId) {
+async function createGameUrl(chapterId, boardImageFile) {
     try {
         const response = await fetch('/api/games', { method: 'POST' });
         const game = await response.json();
-        return `/${game.id}?chapter=${chapterId}`;
+        return `/${game.id}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
     } catch (e) {
         console.error('Failed to create game:', e);
         return '/';

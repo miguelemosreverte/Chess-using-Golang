@@ -279,9 +279,9 @@ async function setupBackgroundToggle() {
 
     const params = new URLSearchParams(window.location.search);
 
-    // Load chapter and background from URL params (for shared links)
+    // Load chapter and background from URL params (for shared links or from book transition)
     const chapterParam = params.get('chapter');
-    const bgParam = params.get('bg');
+    const boardParam = params.get('board');  // Specific board image from book transition
 
     if (chapterParam && chaptersData) {
         const chapterIdx = chaptersData.chapters.findIndex(c => c.id === chapterParam);
@@ -291,13 +291,14 @@ async function setupBackgroundToggle() {
         }
     }
 
-    if (bgParam && currentChapter) {
-        const imgIdx = currentChapter.boardImages.findIndex(img => img.file === bgParam);
+    if (boardParam && currentChapter) {
+        // Use the specific board image passed from book transition
+        const imgIdx = currentChapter.boardImages.findIndex(img => img.file === boardParam);
         if (imgIdx >= 0) {
             currentBoardImageIndex = imgIdx;
         }
     } else if (currentChapter && currentChapter.boardImages.length > 0) {
-        // Cycle through backgrounds on each page load for variety
+        // No specific image requested - cycle through backgrounds for variety
         const lastIdx = parseInt(localStorage.getItem(`lastBgIndex_${currentChapter.id}`) || '-1');
         currentBoardImageIndex = (lastIdx + 1) % currentChapter.boardImages.length;
     }
