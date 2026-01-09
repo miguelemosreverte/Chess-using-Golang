@@ -1176,3 +1176,17 @@ body.dev-mode .chat-panel {
     cursor: grabbing;
     border-color: rgba(255, 255, 80, 1);
 }
+
+/* =============================================================================
+   BOARD FLIPPING (for black player perspective)
+   ============================================================================= */
+
+/* When playing as black, rotate board 180° so black pieces are at bottom */
+.board.board-flipped {
+    transform: rotate(180deg);
+}
+
+/* Counter-rotate each square so pieces appear right-side up */
+.board.board-flipped .square {
+    transform: rotate(180deg);
+}

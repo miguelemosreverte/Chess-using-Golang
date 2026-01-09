@@ -1526,12 +1526,11 @@ function populateChapterList() {
             info.appendChild(desc);
         }
 
-        // Image count
+        // Game count (number of boards = number of games in championship)
         const count = document.createElement('div');
         count.className = 'chapter-count';
         const boardCount = chapter.boardImages ? chapter.boardImages.length : 0;
-        const chatCount = chapter.chatImages ? chapter.chatImages.length : 0;
-        count.textContent = `${boardCount} board images, ${chatCount} chat images`;
+        count.textContent = `${boardCount} game${boardCount !== 1 ? 's' : ''}`;
         info.appendChild(count);
 
         card.appendChild(info);

@@ -200,6 +200,7 @@ function createPageContent(pageData, pageIndex) {
 
 /**
  * Enter a chapter with accelerating book transition.
+ * Starts championship mode with all board images in the chapter.
  *
  * 1. Click chapter → page starts turning slowly
  * 2. Each page turn shows a chat image, getting faster each time
@@ -213,9 +214,19 @@ async function enterChapter(chapterId) {
     const chapter = chapterData[chapterId];
     if (!chapter) return;
 
-    // Get a board image for the game
-    const boardImage = chapter.boardImages[Math.floor(Math.random() * chapter.boardImages.length)];
+    // Start championship at first board image
+    const boardImage = chapter.boardImages[0];
     const boardImagePath = `chapters/${chapterId}/board/${boardImage.file}`;
+
+    // Initialize championship state for this chapter
+    const championshipState = {
+        chapterId: chapterId,
+        currentBoardIndex: 0,
+        totalBoards: chapter.boardImages.length,
+        results: [],
+        active: true
+    };
+    sessionStorage.setItem('championshipState', JSON.stringify(championshipState));
 
     // Get chat images for the rapid page turns
     const chatImages = chapter.chatImages || [];
@@ -243,13 +254,22 @@ async function enterChapter(chapterId) {
     // Run the accelerating page turns
     await runAcceleratingPageTurns(fullscreenBook, chatImages, boardImagePath);
 
-    // Store state for game and navigate
-    sessionStorage.setItem('transitionBoardImage', boardImagePath);
-    sessionStorage.setItem('transitionActive', 'true');
-    sessionStorage.setItem('hidePiecesUntilClick', 'true');
-    sessionStorage.setItem('hideChatUntilOpponent', 'true');
+    // Create game first to get the ID
+    const gameUrl = await createGameUrl(chapterId, boardImage.file, true);
 
-    const gameUrl = await createGameUrl(chapterId, boardImage.file);
+    // Extract gameId from URL (format: /gameId?params)
+    const gameIdMatch = gameUrl.match(/^\/([^?]+)/);
+    const newGameId = gameIdMatch ? gameIdMatch[1] : null;
+
+    // Store transition data with GAME-SPECIFIC key
+    // This prevents other tabs from picking up this transition
+    if (newGameId) {
+        sessionStorage.setItem(`transition_${newGameId}`, JSON.stringify({
+            boardImage: boardImagePath,
+            chapterId: chapterId
+        }));
+    }
+
     window.location.href = gameUrl;
 }
 
@@ -443,12 +463,19 @@ async function splitTransition(chatImagePath, boardImagePath) {
 /**
  * Create a new game and return the URL.
  * Includes chapter and specific board image so the game loads with the same image shown in transition.
+ * @param {string} chapterId - Chapter ID
+ * @param {string} boardImageFile - Board image filename
+ * @param {boolean} isChampionship - Whether this is a championship game
  */
-async function createGameUrl(chapterId, boardImageFile) {
+async function createGameUrl(chapterId, boardImageFile, isChampionship = false) {
     try {
         const response = await fetch('/api/games', { method: 'POST' });
         const game = await response.json();
-        return `/${game.id}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
+        let url = `/${game.id}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
+        if (isChampionship) {
+            url += '&championship=true&boardIndex=0';
+        }
+        return url;
     } catch (e) {
         console.error('Failed to create game:', e);
         return '/';

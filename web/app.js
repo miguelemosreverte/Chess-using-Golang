@@ -70,6 +70,18 @@ let playerId = null;
  */
 let myColor = null;
 
+/**
+ * Championship/tournament state for tracking progress through board images.
+ * Structure: {
+ *   chapterId: string,           // Chapter being played
+ *   currentBoardIndex: number,   // Current board image index
+ *   totalBoards: number,         // Total boards in championship
+ *   results: [{winner: 'white'|'black'|'draw'}], // Results per board
+ *   active: boolean              // Whether championship mode is active
+ * }
+ */
+let championshipState = null;
+
 /* =============================================================================
    INITIALIZATION
    ============================================================================= */
@@ -85,6 +97,9 @@ let chatHiddenUntilOpponent = false;
 
 /** Whether we've sent the auto-hello message */
 let autoHelloSent = false;
+
+/** Whether this player is the game creator (came from book selector) */
+let isGameCreator = false;
 
 /**
  * Initialize the application on page load.
@@ -102,14 +117,57 @@ async function init() {
         return;
     }
 
-    // Check if we're coming from a transition (book selector)
-    const transitionActive = sessionStorage.getItem('transitionActive');
-    const transitionBoardImage = sessionStorage.getItem('transitionBoardImage');
-    const hidePieces = sessionStorage.getItem('hidePiecesUntilClick');
-    const hideChat = sessionStorage.getItem('hideChatUntilOpponent');
+    // Generate unique player ID for this tab session
+    playerId = sessionStorage.getItem('playerId');
+    if (!playerId) {
+        playerId = Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem('playerId', playerId);
+    }
+
+    // Check URL params for championship continuation
+    const params = new URLSearchParams(window.location.search);
+    const boardIndex = parseInt(params.get('boardIndex') || '0');
+    const isChampionshipContinuation = params.get('championship') === 'true' && boardIndex > 0;
+
+    // Check if we're the game creator (came from book selector)
+    // Use GAME-SPECIFIC keys to avoid sharing between tabs
+    const creatorKey = `gameCreator_${gameId}`;
+    const transitionKey = `transition_${gameId}`;
+    const transitionData = sessionStorage.getItem(transitionKey);
+
     let transitionOverlay = null;
 
-    if (transitionActive === 'true' && transitionBoardImage) {
+    // For championship continuation (games after the first), skip the overlay experience
+    // Both players are already connected, just show the game immediately
+    if (isChampionshipContinuation) {
+        // Clear any transition data
+        sessionStorage.removeItem(transitionKey);
+
+        // Both players see everything immediately in continuation games
+        piecesHidden = false;
+        revealedPieces = 'all';
+
+        // Determine color based on championship role (set during first game)
+        // championshipRole: 'owner' = started the championship, 'guest' = joined via URL
+        if (!myColor) {
+            const championshipRole = sessionStorage.getItem('championshipRole');
+            // Owner color alternates: game 0=white, game 1=black, game 2=white...
+            const ownerColor = boardIndex % 2 === 0 ? 'white' : 'black';
+            const guestColor = ownerColor === 'white' ? 'black' : 'white';
+            myColor = championshipRole === 'owner' ? ownerColor : guestColor;
+            sessionStorage.setItem(`myColor_${gameId}`, myColor);
+        }
+    } else if (transitionData) {
+        // We're the game creator - parse transition data
+        const transition = JSON.parse(transitionData);
+        isGameCreator = true;
+
+        // Clear immediately to prevent other tabs from seeing it
+        sessionStorage.removeItem(transitionKey);
+
+        // Mark this player as the creator of this game
+        sessionStorage.setItem(creatorKey, playerId);
+
         // Create fullscreen overlay showing the board image from the transition
         transitionOverlay = document.createElement('div');
         transitionOverlay.id = 'transition-overlay';
@@ -121,7 +179,7 @@ async function init() {
             cursor: pointer;
         `;
         transitionOverlay.innerHTML = `
-            <img src="${transitionBoardImage}" style="
+            <img src="${transition.boardImage}" style="
                 width: 100vw;
                 height: 100vh;
                 object-fit: cover;
@@ -151,34 +209,24 @@ async function init() {
 
         document.body.appendChild(transitionOverlay);
 
-        // Clear the transition state
-        sessionStorage.removeItem('transitionActive');
-        sessionStorage.removeItem('transitionBoardImage');
-    }
-
-    // Handle hidden pieces until click
-    if (hidePieces === 'true') {
+        // Game creator has hidden pieces until click
         piecesHidden = true;
-        sessionStorage.removeItem('hidePiecesUntilClick');
-    }
 
-    // Handle hidden chat until opponent joins
-    if (hideChat === 'true') {
+        // Game creator's chat is hidden until opponent joins
         chatHiddenUntilOpponent = true;
-        sessionStorage.removeItem('hideChatUntilOpponent');
-        // Hide the chat panel initially
         const chatPanel = document.querySelector('.chat-panel');
         if (chatPanel) {
             chatPanel.style.opacity = '0';
             chatPanel.style.transition = 'opacity 0.5s';
         }
-    }
-
-    // Generate unique player ID for this tab session
-    playerId = sessionStorage.getItem('playerId');
-    if (!playerId) {
-        playerId = Math.random().toString(36).substr(2, 9);
-        sessionStorage.setItem('playerId', playerId);
+    } else {
+        // Check if we're the creator from a previous load (page refresh)
+        const savedCreator = sessionStorage.getItem(creatorKey);
+        if (savedCreator === playerId) {
+            isGameCreator = true;
+        }
+        // If not the creator, we're joining - show everything immediately
+        // No overlay, no hidden pieces, no hidden chat
     }
 
     // Load player color for this game (if previously set)
@@ -190,15 +238,21 @@ async function init() {
     // Load game state
     await loadGame();
 
+    // Initialize championship state (after background is set up)
+    // We'll call this after setupBackgroundToggle to ensure currentChapter is loaded
+
     // Load existing chat messages
     await loadChat();
 
     // Setup background after board is rendered
     requestAnimationFrame(() => {
-        setupBackgroundToggle().then(() => {
+        setupBackgroundToggle().then(async () => {
+            // Initialize championship state now that chapter is loaded
+            initChampionshipState();
+
             // Background is fully loaded and rendered
             if (transitionOverlay) {
-                // Wait for click to reveal pieces
+                // GAME CREATOR: Wait for click to reveal pieces
                 transitionOverlay.addEventListener('click', () => {
                     // Fade out overlay
                     transitionOverlay.style.transition = 'opacity 0.5s ease-out';
@@ -207,26 +261,68 @@ async function init() {
                         transitionOverlay.remove();
                     }, 500);
 
-                    // Reveal only MY pieces (based on assigned color or default to white if first player)
-                    // Keep piecesHidden = true so opponent pieces stay hidden until they join
-                    const myPieceColor = myColor || 'white';
-                    revealedPieces = myPieceColor;
-                    // piecesHidden stays true - only revealedPieces color shows
+                    // Game creator gets their color from championship (alternating) or defaults to white
+                    if (!myColor) {
+                        myColor = getMyColorForGame();
+                        sessionStorage.setItem(`myColor_${gameId}`, myColor);
+                        // Mark as championship owner for color alternation in future games
+                        sessionStorage.setItem('championshipRole', 'owner');
+                    }
+
+                    // Reveal only MY pieces
+                    // Keep piecesHidden = true so opponent pieces stays hidden until they join
+                    revealedPieces = myColor;
                     updateUI();
 
                     // Send auto-hello to signal we're ready
                     sendAutoHello();
+
+                    // Check if opponent already joined (reveals their pieces too)
+                    checkForOpponent();
                 });
-            } else if (piecesHidden) {
-                // No overlay but pieces hidden - reveal on any board click
+            } else if (isGameCreator && piecesHidden) {
+                // Game creator but no overlay (page refresh) - reveal on any board click
                 document.getElementById('board').addEventListener('click', function onBoardClick() {
-                    const myPieceColor = myColor || 'white';
-                    revealedPieces = myPieceColor;
-                    // piecesHidden stays true
+                    if (!myColor) {
+                        myColor = getMyColorForGame();
+                        sessionStorage.setItem(`myColor_${gameId}`, myColor);
+                        sessionStorage.setItem('championshipRole', 'owner');
+                    }
+
+                    revealedPieces = myColor;
                     updateUI();
                     sendAutoHello();
+                    checkForOpponent();
                     this.removeEventListener('click', onBoardClick);
                 }, { once: true });
+            } else if (!isGameCreator && !isChampionshipContinuation) {
+                // JOINER (player 2): Show intro transition first, then reveal game
+                // Get chapter info from URL to show the same intro experience
+                const chapterParam = params.get('chapter');
+                const boardParam = params.get('board');
+
+                if (chapterParam && typeof currentChapter !== 'undefined' && currentChapter) {
+                    // Show intro transition for joiner
+                    await showJoinerIntro(currentChapter, boardParam);
+                }
+
+                // After intro, set up joiner state
+                if (!myColor) {
+                    // Player 2 gets opposite of player 1's color
+                    const player1Color = getPlayer1ColorForGame();
+                    myColor = player1Color === 'white' ? 'black' : 'white';
+                    sessionStorage.setItem(`myColor_${gameId}`, myColor);
+                    // Mark as guest for color alternation in future games
+                    sessionStorage.setItem('championshipRole', 'guest');
+                }
+
+                // Show all pieces for joiner
+                piecesHidden = false;
+                revealedPieces = 'all';
+                updateUI();
+
+                // Send auto-hello to notify player 1
+                sendAutoHello();
             }
         });
     });
@@ -269,8 +365,10 @@ async function sendAutoHello() {
  * If so, reveal the chat panel and their pieces.
  */
 function checkForOpponent() {
-    // Look for messages from other players
-    const otherPlayerMessages = chatMessages.filter(msg => msg.player !== playerId);
+    // Look for messages from other players (excluding system messages)
+    const otherPlayerMessages = chatMessages.filter(msg =>
+        msg.player !== playerId && !msg.message.startsWith('__')
+    );
 
     if (otherPlayerMessages.length > 0) {
         // Opponent has joined!
@@ -313,6 +411,9 @@ async function loadChat() {
             const type = msg.player === playerId ? 'sent' : 'received';
             addChatMessageToUI(msg.message, type);
         });
+
+        // Check if opponent already joined (they may have sent messages before we loaded)
+        checkForOpponent();
     } catch (error) {
         console.error('Failed to load chat:', error);
     }
@@ -365,10 +466,10 @@ async function pollGameState() {
                 showCheckBanner();
             }
 
-            // Auto-restart on game over
+            // Handle game over
             if (gameState.status === 'checkmate' || gameState.status === 'stalemate') {
                 setTimeout(() => {
-                    window.location.href = '/';
+                    handleGameEnd();
                 }, 2000);
             }
 
@@ -405,6 +506,526 @@ async function pollChat() {
     } catch (error) {
         // Silently ignore polling errors
     }
+}
+
+/* =============================================================================
+   JOINER INTRO TRANSITION
+   ============================================================================= */
+
+/**
+ * Show the intro transition for a joining player (player 2).
+ * Displays the same accelerating image sequence that player 1 saw.
+ * @param {Object} chapter - The chapter data
+ * @param {string} boardFile - The board image filename
+ */
+async function showJoinerIntro(chapter, boardFile) {
+    return new Promise(async (resolve) => {
+        // Get chat images from chapter graph (if loaded)
+        let chatImages = [];
+        if (typeof chapterGraph !== 'undefined' && chapterGraph && chapterGraph.byType && chapterGraph.byType.chat) {
+            chatImages = chapterGraph.byType.chat.map(c => `chapters/${chapter.id}/chat/${c.file}`);
+        }
+
+        // Board image path
+        const boardImagePath = `chapters/${chapter.id}/board/${boardFile}`;
+
+        // Create fullscreen overlay for the transition
+        const overlay = document.createElement('div');
+        overlay.id = 'joiner-intro-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: url('wood-bg.jpg') center/cover;
+        `;
+
+        // Create image element for the sequence
+        const imgEl = document.createElement('img');
+        imgEl.style.cssText = `
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        `;
+        overlay.appendChild(imgEl);
+
+        document.body.appendChild(overlay);
+
+        // Build image sequence: chat images + board image
+        const imagesToShow = [];
+        if (chatImages.length > 0) {
+            // Use up to 5 chat images
+            for (let i = 0; i < Math.min(5, chatImages.length); i++) {
+                imagesToShow.push(chatImages[i % chatImages.length]);
+            }
+        }
+        imagesToShow.push(boardImagePath);
+
+        // Show accelerating image sequence
+        let timing = 1000;
+        const minTiming = 500;
+        const speedFactor = 0.85;
+
+        for (let i = 0; i < imagesToShow.length; i++) {
+            imgEl.src = imagesToShow[i];
+            await new Promise(r => setTimeout(r, timing));
+            timing = Math.max(minTiming, timing * speedFactor);
+        }
+
+        // Show "Click to start" prompt on final image
+        const prompt = document.createElement('div');
+        prompt.style.cssText = `
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-family: Georgia, serif;
+            font-size: 1.5em;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+            animation: pulse 2s infinite;
+        `;
+        prompt.textContent = 'Click to start';
+
+        // Add pulse animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0%, 100% { opacity: 0.7; }
+                50% { opacity: 1; }
+            }
+        `;
+        overlay.appendChild(style);
+        overlay.appendChild(prompt);
+
+        // Wait for click
+        overlay.style.cursor = 'pointer';
+        overlay.addEventListener('click', () => {
+            // Fade out and remove
+            overlay.style.transition = 'opacity 0.5s ease-out';
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+                resolve();
+            }, 500);
+        }, { once: true });
+    });
+}
+
+/* =============================================================================
+   CHAMPIONSHIP MODE
+   ============================================================================= */
+
+/**
+ * Get the color for the game creator (player 1) for this game.
+ * In championship mode, colors alternate each game.
+ * @returns {string} 'white' or 'black'
+ */
+function getMyColorForGame() {
+    if (championshipState && championshipState.active) {
+        // In championship, alternate colors each game
+        // Game 0: creator=white, Game 1: creator=black, etc.
+        const gameNumber = championshipState.currentBoardIndex;
+        return gameNumber % 2 === 0 ? 'white' : 'black';
+    }
+    // Default: game creator is white
+    return 'white';
+}
+
+/**
+ * Get player 1's (game creator's) color for this game.
+ * Used by player 2 to determine their own color.
+ * @returns {string} 'white' or 'black'
+ */
+function getPlayer1ColorForGame() {
+    // Check if there's a championship state that tells us the color
+    if (championshipState && championshipState.active) {
+        const gameNumber = championshipState.currentBoardIndex;
+        return gameNumber % 2 === 0 ? 'white' : 'black';
+    }
+    // Default: player 1 (game creator) is white
+    return 'white';
+}
+
+/**
+ * Initialize championship state from sessionStorage or URL params.
+ * Called during init to resume any active championship.
+ */
+function initChampionshipState() {
+    // Check URL params for championship flag
+    const params = new URLSearchParams(window.location.search);
+    const isChampionship = params.get('championship') === 'true';
+    const boardIndex = parseInt(params.get('boardIndex') || '0');
+
+    // Load saved state
+    const saved = sessionStorage.getItem('championshipState');
+    if (saved) {
+        try {
+            championshipState = JSON.parse(saved);
+            // Update board index from URL if provided
+            if (isChampionship && !isNaN(boardIndex)) {
+                championshipState.currentBoardIndex = boardIndex;
+            }
+        } catch (e) {
+            championshipState = null;
+        }
+    }
+
+    // If URL says championship mode but no state, create new state
+    if (isChampionship && !championshipState && typeof currentChapter !== 'undefined' && currentChapter) {
+        championshipState = {
+            chapterId: currentChapter.id,
+            currentBoardIndex: boardIndex,
+            totalBoards: currentChapter.boardImages.length,
+            results: [],
+            active: true
+        };
+        saveChampionshipState();
+    }
+}
+
+/**
+ * Save championship state to sessionStorage.
+ */
+function saveChampionshipState() {
+    if (championshipState) {
+        sessionStorage.setItem('championshipState', JSON.stringify(championshipState));
+    } else {
+        sessionStorage.removeItem('championshipState');
+    }
+}
+
+/**
+ * Record a game result and advance to next board in championship.
+ * @param {string} winner - 'white', 'black', or 'draw'
+ */
+function recordChampionshipResult(winner) {
+    if (!championshipState || !championshipState.active) return;
+
+    // Record the result
+    championshipState.results.push({ winner });
+    championshipState.currentBoardIndex++;
+    saveChampionshipState();
+
+    // Check if championship is complete
+    if (championshipState.currentBoardIndex >= championshipState.totalBoards) {
+        // Championship complete - show results
+        showChampionshipResults();
+    } else {
+        // Only the championship OWNER creates the next game
+        // The guest will receive the next game URL via chat message
+        const role = sessionStorage.getItem('championshipRole');
+        if (role === 'owner') {
+            advanceToNextBoardGame();
+        } else {
+            // Guest: wait for next game URL from owner
+            waitForNextGameUrl();
+        }
+    }
+}
+
+/**
+ * Create a new game on the next board image in the championship.
+ * Only called by the championship owner - sends URL to guest via chat.
+ */
+async function advanceToNextBoardGame() {
+    if (!championshipState) return;
+
+    // Create a new game via API
+    try {
+        const response = await fetch(`${API_BASE}/games`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const newGameId = data.id;
+
+            // Build the next game URL
+            const boardFile = currentChapter.boardImages[championshipState.currentBoardIndex].file;
+            const nextGameUrl = `/${newGameId}?championship=true&chapter=${championshipState.chapterId}&boardIndex=${championshipState.currentBoardIndex}&board=${boardFile}`;
+
+            // Copy existing chat messages to the new game (excluding system messages)
+            const messagesToCopy = chatMessages.filter(msg => !msg.message.startsWith('__'));
+            for (const msg of messagesToCopy) {
+                try {
+                    await fetch(`${API_BASE}/games/${newGameId}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            player: msg.player,
+                            message: msg.message,
+                            time: msg.time
+                        })
+                    });
+                } catch (e) {
+                    // Ignore errors copying messages
+                }
+            }
+
+            // Send the next game URL to the guest via chat (in OLD game)
+            // Use a special message format that the guest will detect
+            try {
+                await fetch(`${API_BASE}/games/${gameId}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        player: playerId,
+                        message: `__NEXT_GAME__:${nextGameUrl}`,
+                        time: Date.now()
+                    })
+                });
+            } catch (e) {
+                console.error('Failed to send next game URL:', e);
+            }
+
+            // Small delay to ensure message is sent before navigating
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Get the next board image for transition
+            let imagePath = '';
+            if (typeof currentChapter !== 'undefined' && currentChapter) {
+                const nextBoardImage = currentChapter.boardImages[championshipState.currentBoardIndex];
+                if (nextBoardImage) {
+                    imagePath = `chapters/${currentChapter.id}/board/${nextBoardImage.file}`;
+                }
+            }
+
+            // Store transition data with GAME-SPECIFIC key (for owner only)
+            sessionStorage.setItem(`transition_${newGameId}`, JSON.stringify({
+                boardImage: imagePath,
+                chapterId: championshipState.chapterId
+            }));
+
+            // Navigate to next game
+            window.location.href = nextGameUrl;
+        }
+    } catch (error) {
+        console.error('Failed to create next championship game:', error);
+    }
+}
+
+/**
+ * Wait for the championship owner to send the next game URL via chat.
+ * Called by the guest when a game ends.
+ */
+async function waitForNextGameUrl() {
+    // Show waiting message
+    const waitingOverlay = document.createElement('div');
+    waitingOverlay.id = 'waiting-overlay';
+    waitingOverlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    `;
+    waitingOverlay.innerHTML = `
+        <div style="
+            color: white;
+            font-family: Georgia, serif;
+            font-size: 1.5em;
+            text-align: center;
+        ">
+            <div>Preparing next game...</div>
+            <div style="font-size: 0.8em; margin-top: 10px; opacity: 0.7;">
+                Game ${championshipState.currentBoardIndex + 1} of ${championshipState.totalBoards}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(waitingOverlay);
+
+    // Poll for the next game URL message
+    const pollForNextGame = async () => {
+        try {
+            const response = await fetch(`${API_BASE}/games/${gameId}/chat`);
+            if (response.ok) {
+                const messages = await response.json();
+                // Look for the __NEXT_GAME__ message
+                for (const msg of messages) {
+                    if (msg.message && msg.message.startsWith('__NEXT_GAME__:')) {
+                        const nextGameUrl = msg.message.replace('__NEXT_GAME__:', '');
+                        // Navigate to the next game
+                        window.location.href = nextGameUrl;
+                        return;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error polling for next game:', e);
+        }
+        // Keep polling
+        setTimeout(pollForNextGame, 500);
+    };
+
+    pollForNextGame();
+}
+
+/**
+ * Calculate championship score for a player.
+ * @param {string} color - 'white' or 'black'
+ * @returns {number} Total score (wins = 1, draws = 0.5)
+ */
+function getChampionshipScore(color) {
+    if (!championshipState) return 0;
+
+    return championshipState.results.reduce((score, result) => {
+        if (result.winner === color) return score + 1;
+        if (result.winner === 'draw') return score + 0.5;
+        return score;
+    }, 0);
+}
+
+/**
+ * Show the championship results screen.
+ * Creates a modal overlay with the final results.
+ */
+function showChampionshipResults() {
+    if (!championshipState) return;
+
+    const myScore = getChampionshipScore(myColor || 'white');
+    const oppScore = getChampionshipScore(myColor === 'white' ? 'black' : 'white');
+    const total = championshipState.totalBoards;
+
+    const isVictory = myScore > oppScore;
+    const isDraw = myScore === oppScore;
+
+    const resultText = isVictory ? 'Victory!' : (isDraw ? 'Draw!' : 'Defeat');
+    const scoreText = `${myScore} out of ${total}`;
+
+    // Create results modal
+    const modal = document.createElement('div');
+    modal.id = 'championship-results';
+    modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 15, 10, 0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 500;
+        animation: fade-in 0.5s ease;
+    `;
+
+    modal.innerHTML = `
+        <div style="
+            background: url('wood-border.jpg');
+            background-size: cover;
+            border-radius: 12px;
+            padding: 40px 60px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        ">
+            <h2 style="
+                font-size: 2rem;
+                color: #fff8e8;
+                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+                margin-bottom: 10px;
+                letter-spacing: 0.1em;
+            ">CHAMPIONSHIP COMPLETE</h2>
+
+            <div style="
+                font-size: 2.5rem;
+                color: ${isVictory ? '#90EE90' : (isDraw ? '#FFD700' : '#FF6B6B')};
+                margin: 20px 0;
+                text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            ">${resultText}</div>
+
+            <div style="
+                font-size: 1.5rem;
+                color: rgba(255, 248, 232, 0.9);
+                margin-bottom: 30px;
+            ">${scoreText}</div>
+
+            <div id="championship-grid" style="
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+                gap: 10px;
+                margin-bottom: 30px;
+                max-width: 500px;
+            "></div>
+
+            <button onclick="returnToMenu()" style="
+                padding: 12px 30px;
+                font-size: 1rem;
+                background: rgba(200, 160, 100, 0.85);
+                border: none;
+                border-radius: 4px;
+                color: #3d2510;
+                cursor: pointer;
+            ">Play Again</button>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Populate results grid with board thumbnails
+    const grid = document.getElementById('championship-grid');
+    if (grid && typeof currentChapter !== 'undefined' && currentChapter) {
+        championshipState.results.forEach((result, i) => {
+            const boardImg = currentChapter.boardImages[i];
+            if (boardImg) {
+                const cell = document.createElement('div');
+                cell.style.cssText = `
+                    position: relative;
+                    aspect-ratio: 1;
+                    border-radius: 4px;
+                    overflow: hidden;
+                `;
+
+                const img = document.createElement('img');
+                img.src = `chapters/${currentChapter.id}/board/${boardImg.file}`;
+                img.style.cssText = `
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    opacity: 0.7;
+                `;
+                cell.appendChild(img);
+
+                // Win/Loss/Draw indicator
+                const indicator = document.createElement('div');
+                const isWin = result.winner === myColor;
+                const isLoss = result.winner !== myColor && result.winner !== 'draw';
+                indicator.textContent = isWin ? '✓' : (isLoss ? '✗' : '½');
+                indicator.style.cssText = `
+                    position: absolute;
+                    inset: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 2rem;
+                    color: ${isWin ? '#90EE90' : (isLoss ? '#FF6B6B' : '#FFD700')};
+                    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+                    background: rgba(0, 0, 0, 0.3);
+                `;
+                cell.appendChild(indicator);
+
+                grid.appendChild(cell);
+            }
+        });
+    }
+
+    // Clear championship state
+    championshipState.active = false;
+    saveChampionshipState();
+}
+
+/**
+ * Return to menu (clear championship and go home).
+ */
+function returnToMenu() {
+    sessionStorage.removeItem('championshipState');
+    sessionStorage.removeItem('championshipRole');
+    window.location.href = '/';
 }
 
 /* =============================================================================
@@ -645,14 +1266,40 @@ async function makeMove(from, to, promotion = null) {
             showCheckBanner();
         }
 
-        // Auto-restart on game over
+        // Handle game over
         if (gameState.status === 'checkmate' || gameState.status === 'stalemate') {
-            setTimeout(() => newGame(), 2000);
+            setTimeout(() => handleGameEnd(), 2000);
         }
 
         updateUI();
     } catch (error) {
         console.error('Failed to make move:', error);
+    }
+}
+
+/**
+ * Handle game end (checkmate or stalemate).
+ * In championship mode, records result and advances to next board.
+ * In regular mode, redirects to home.
+ */
+function handleGameEnd() {
+    if (!gameState) return;
+
+    // Determine the winner
+    let winner;
+    if (gameState.status === 'stalemate') {
+        winner = 'draw';
+    } else if (gameState.status === 'checkmate') {
+        // The player who just moved won (it's currently the opponent's turn who is checkmated)
+        winner = gameState.turn === 'white' ? 'black' : 'white';
+    }
+
+    // If in championship mode, record result and advance
+    if (championshipState && championshipState.active) {
+        recordChampionshipResult(winner);
+    } else {
+        // Regular game - go back to menu
+        newGame();
     }
 }
 
@@ -888,6 +1535,15 @@ function updateUI() {
     const displayBoard = isLive ? gameState.board : getBoardAtMove(replayIndex);
     const displayMoveIndex = isLive ? gameState.moveHistory.length - 1 : replayIndex;
 
+    // Flip board for black player (unless in debug play mode)
+    const board = document.getElementById('board');
+    const isDebugPlayMode = typeof devModeIndex !== 'undefined' && devModeIndex === 2;
+    if (myColor === 'black' && !isDebugPlayMode) {
+        board.classList.add('board-flipped');
+    } else {
+        board.classList.remove('board-flipped');
+    }
+
     // Update board pieces
     const squares = document.querySelectorAll('.square');
     squares.forEach(square => {
@@ -1022,7 +1678,21 @@ async function sendChat() {
     const message = input.value.trim();
     if (!message || !gameId) return;
 
-    // Add to UI immediately
+    await sendChatMessage(message);
+
+    // Clear input
+    input.value = '';
+}
+
+/**
+ * Send a chat message programmatically (without using the input field).
+ * Used for system messages like next game URL.
+ * @param {string} message - The message to send
+ */
+async function sendChatMessage(message) {
+    if (!message || !gameId) return;
+
+    // Add to UI immediately (unless it's a system message)
     addChatMessageToUI(message, 'sent');
 
     // Send to server
@@ -1041,9 +1711,6 @@ async function sendChat() {
     } catch (error) {
         console.error('Failed to send chat:', error);
     }
-
-    // Clear input
-    input.value = '';
 }
 
 /**
@@ -1053,6 +1720,11 @@ async function sendChat() {
  * @param {string} type - "sent" for own messages, "received" for opponent
  */
 function addChatMessageToUI(message, type) {
+    // Don't display system messages (like __NEXT_GAME__)
+    if (message.startsWith('__')) {
+        return;
+    }
+
     const messagesContainer = document.getElementById('chat-messages');
     const messageEl = document.createElement('div');
     messageEl.className = `chat-message ${type}`;
