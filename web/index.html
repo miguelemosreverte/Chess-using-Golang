@@ -8,11 +8,6 @@
 </head>
 <body>
     <div class="container">
-        <div class="game-info">
-            <div class="turn">Turn: <span id="turn">White</span></div>
-            <div class="status">Status: <span id="status">ongoing</span></div>
-        </div>
-
         <!-- Undo request panel (shown when there's a pending request) -->
         <div id="undo-panel" class="undo-panel" style="display: none;">
             <p id="undo-message"></p>
@@ -33,21 +28,11 @@
 
         <div class="controls">
             <button id="new-game">New Game</button>
-            <button id="request-undo" onclick="requestUndo()">Request Undo</button>
         </div>
 
-        <div class="move-history">
-            <h3>Move History</h3>
-            <div id="history"></div>
-        </div>
-
-        <!-- Replay controls (at bottom, faded) -->
-        <div class="replay-controls">
-            <button onclick="replayFirst()" title="First move">|◀</button>
-            <button onclick="replayPrev()" title="Previous move">◀</button>
-            <button onclick="replayLive()" id="live-btn" class="live-indicator" title="Live">●</button>
-            <button onclick="replayNext()" title="Next move">▶</button>
-            <button onclick="replayLast()" title="Last move">▶|</button>
+        <div class="game-info">
+            <div class="turn">Turn: <span id="turn">White</span></div>
+            <div class="status">Status: <span id="status">ongoing</span></div>
         </div>
     </div>
 
@@ -76,7 +61,6 @@
 
     <!-- Chat panel -->
     <div class="chat-panel">
-        <div class="chat-header">Chat</div>
         <div class="chat-messages" id="chat-messages"></div>
         <div class="chat-input-area">
             <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')sendChat()">

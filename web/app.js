@@ -65,14 +65,21 @@ async function init() {
 function setupBackgroundToggle() {
     const params = new URLSearchParams(window.location.search);
 
-    // Load background from URL
+    // Load background from URL or cycle to next
     const bgParam = params.get('bg');
     if (bgParam) {
         const index = BACKGROUNDS.indexOf(bgParam);
         if (index >= 0) {
             currentBgIndex = index;
         }
+    } else {
+        // Cycle through backgrounds on each load
+        const lastBgIndex = parseInt(localStorage.getItem('lastBgIndex') || '-1');
+        currentBgIndex = (lastBgIndex + 1) % BACKGROUNDS.length;
+        // Skip wood-bg.jpg (index 0) for the cycle, start from bg-01
+        if (currentBgIndex === 0) currentBgIndex = 1;
     }
+    localStorage.setItem('lastBgIndex', currentBgIndex.toString());
 
     // Load config from server or saved config
     loadBgConfig();
@@ -293,6 +300,21 @@ function resetBoardTransform() {
     if (container) {
         container.style.transform = '';
     }
+    resetUITransform();
+}
+
+function resetUITransform() {
+    const uiElements = [
+        document.querySelector('.controls'),
+        document.querySelector('.game-info'),
+        document.querySelector('.chat-panel')
+    ];
+
+    uiElements.forEach(el => {
+        if (el) {
+            el.style.transform = '';
+        }
+    });
 }
 
 function applyCornerTransform() {
@@ -331,6 +353,59 @@ function applyCornerTransform() {
     if (matrix) {
         container.style.transform = matrix;
     }
+
+    // Apply perspective to UI elements
+    applyUITransform(rect);
+}
+
+// Apply perspective transform to UI elements based on board's transform
+function applyUITransform(boardRect) {
+    if (corners.length !== 4) return;
+
+    // Calculate scale and skew from corners
+    const dstPixels = corners.map(c => ({
+        x: c.x * window.innerWidth,
+        y: c.y * window.innerHeight
+    }));
+
+    // Sort to get TL, TR, BR, BL
+    const sorted = [...dstPixels].sort((a, b) => a.y - b.y);
+    const top = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
+    const bottom = sorted.slice(2, 4).sort((a, b) => a.x - b.x);
+    const tl = top[0], tr = top[1], br = bottom[1], bl = bottom[0];
+
+    // Calculate average scale
+    const topWidth = tr.x - tl.x;
+    const bottomWidth = br.x - bl.x;
+    const leftHeight = bl.y - tl.y;
+    const rightHeight = br.y - tr.y;
+
+    const avgWidth = (topWidth + bottomWidth) / 2;
+    const avgHeight = (leftHeight + rightHeight) / 2;
+    const scaleX = avgWidth / boardRect.width;
+    const scaleY = avgHeight / boardRect.height;
+    const scale = (scaleX + scaleY) / 2;
+
+    // Calculate center of destination
+    const centerX = (tl.x + tr.x + br.x + bl.x) / 4;
+    const centerY = (tl.y + tr.y + br.y + bl.y) / 4;
+
+    // Calculate skew (perspective hint)
+    const skewX = ((tr.x - tl.x) - (br.x - bl.x)) / avgHeight * 10; // degrees approximation
+    const skewY = ((bl.y - tl.y) - (br.y - tr.y)) / avgWidth * 10;
+
+    // Apply to UI elements
+    const uiElements = [
+        { el: document.querySelector('.controls'), pos: 'bottom' },
+        { el: document.querySelector('.game-info'), pos: 'bottom' },
+        { el: document.querySelector('.chat-panel'), pos: 'side' }
+    ];
+
+    uiElements.forEach(({ el, pos }) => {
+        if (!el) return;
+        el.style.transformOrigin = 'center center';
+        el.style.transform = `scale(${scale}) skew(${skewX}deg, ${skewY}deg)`;
+    });
 }
 
 // Compute perspective transform (matrix3d) from 4 corner correspondences
@@ -482,7 +557,7 @@ function setupMenuToggle() {
         if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) return;
         if (document.body.classList.contains('menu-visible')) {
             if (e.target.closest('button') || e.target.closest('.controls') ||
-                e.target.closest('.move-history') || e.target.closest('.replay-controls') ||
+                e.target.closest('.game-info') ||
                 e.target.closest('.undo-panel') || e.target.closest('.chat-panel')) return;
         }
         document.body.classList.toggle('menu-visible');
@@ -504,9 +579,20 @@ async function newGame() {
         singleMoveHint = null;
         hideGameOverModal();
         updateUI();
+
+        // Cycle to next background
+        cycleBackground();
     } catch (error) {
         console.error('Failed to create game:', error);
     }
+}
+
+// Cycle to the next background image
+function cycleBackground() {
+    currentBgIndex = (currentBgIndex % (BACKGROUNDS.length - 1)) + 1; // Skip wood-bg.jpg (index 0)
+    localStorage.setItem('lastBgIndex', currentBgIndex.toString());
+    loadBgConfig();
+    applyBackground();
 }
 
 // Render the chess board
@@ -989,32 +1075,20 @@ function updateUI() {
         }
     });
 
-    // Update turn indicator
-    const turnEl = document.getElementById('turn');
-    const displayTurn = isLive ? gameState.turn : (displayMoveIndex % 2 === 0 ? 'black' : 'white');
-    turnEl.textContent = capitalize(displayTurn);
-    turnEl.style.color = displayTurn === 'white' ? '#4ade80' : '#a78bfa';
-
-    // Update status
-    const statusEl = document.getElementById('status');
-    const displayStatus = isLive ? gameState.status : 'ongoing';
-    statusEl.textContent = isLive ? capitalize(gameState.status) : `Move ${displayMoveIndex + 1}/${gameState.moveHistory.length}`;
-
     // Update container class for status styling (preserve menu-visible)
     const menuVisible = document.body.classList.contains('menu-visible');
     document.body.className = isLive ? `status-${gameState.status}` : '';
     if (menuVisible) document.body.classList.add('menu-visible');
 
-    // Update move history
-    const historyEl = document.getElementById('history');
-    historyEl.innerHTML = gameState.moveHistory
-        .map((move, i) => {
-            const isActive = i === displayMoveIndex;
-            const className = isActive ? 'style="background: rgba(59, 130, 246, 0.5)"' : '';
-            const prom = move.promotion ? `=${move.promotion[0].toUpperCase()}` : '';
-            return `<span ${className} onclick="goToMove(${i})">${Math.floor(i/2) + 1}${i % 2 === 0 ? '.' : '...'} ${move.from}-${move.to}${prom}</span>`;
-        })
-        .join('');
+    // Update turn and status
+    const turnEl = document.getElementById('turn');
+    const statusEl = document.getElementById('status');
+    if (turnEl) {
+        turnEl.textContent = capitalize(gameState.turn);
+    }
+    if (statusEl) {
+        statusEl.textContent = capitalize(gameState.status);
+    }
 
     // Update undo panel
     const undoPanel = document.getElementById('undo-panel');
@@ -1061,12 +1135,8 @@ function sendChat() {
 
     const messagesContainer = document.getElementById('chat-messages');
     const messageEl = document.createElement('div');
-    messageEl.className = 'chat-message';
-
-    const now = new Date();
-    const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    messageEl.innerHTML = `<span class="timestamp">${timestamp}</span>${message}`;
+    messageEl.className = 'chat-message sent';
+    messageEl.textContent = message;
     messagesContainer.appendChild(messageEl);
 
     // Scroll to bottom
