@@ -23,6 +23,15 @@
 
 const API_BASE = '/api';
 
+/** WebSocket connection for real-time updates */
+let ws = null;
+
+/** Whether WebSocket is connected */
+let wsConnected = false;
+
+/** Reconnection timeout ID */
+let wsReconnectTimeout = null;
+
 /** Unicode symbols for chess pieces, indexed by color and piece type */
 const PIECES = {
     white: { king: '♔', queen: '♕', rook: '♖', bishop: '♗', knight: '♘', pawn: '♙' },
@@ -333,9 +342,16 @@ async function init() {
         applyBackground();
     });
 
-    // Start polling for updates
-    setInterval(pollGameState, 1000);
-    setInterval(pollChat, 1000);
+    // Connect WebSocket for real-time updates
+    connectWebSocket();
+
+    // Start polling as fallback (less frequent when WebSocket is connected)
+    setInterval(() => {
+        if (!wsConnected) pollGameState();
+    }, 1000);
+    setInterval(() => {
+        if (!wsConnected) pollChat();
+    }, 1000);
 }
 
 /**
@@ -506,6 +522,263 @@ async function pollChat() {
     } catch (error) {
         // Silently ignore polling errors
     }
+}
+
+/* =============================================================================
+   WEBSOCKET CONNECTION
+   ============================================================================= */
+
+/**
+ * Connect to WebSocket for real-time game updates.
+ * Falls back to HTTP polling if WebSocket connection fails.
+ */
+function connectWebSocket() {
+    if (!gameId) return;
+
+    // Determine WebSocket URL based on current location
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/games/${gameId}/ws`;
+
+    try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            wsConnected = true;
+
+            // Clear any pending reconnect
+            if (wsReconnectTimeout) {
+                clearTimeout(wsReconnectTimeout);
+                wsReconnectTimeout = null;
+            }
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                handleWebSocketMessage(msg);
+            } catch (e) {
+                console.error('Failed to parse WebSocket message:', e);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            wsConnected = false;
+            ws = null;
+
+            // Attempt to reconnect after 3 seconds
+            wsReconnectTimeout = setTimeout(() => {
+                console.log('Attempting WebSocket reconnect...');
+                connectWebSocket();
+            }, 3000);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            // Will trigger onclose, which handles reconnection
+        };
+    } catch (e) {
+        console.error('Failed to create WebSocket:', e);
+        wsConnected = false;
+    }
+}
+
+/**
+ * Handle incoming WebSocket messages.
+ * @param {Object} msg - Parsed message with type and payload
+ */
+function handleWebSocketMessage(msg) {
+    switch (msg.type) {
+        case 'game_update':
+            handleGameUpdate(msg.game);
+            break;
+
+        case 'chat':
+            handleChatMessage(msg.message);
+            break;
+
+        case 'moves':
+            // Response to get_moves request
+            if (msg.moves && msg.moves.moves) {
+                legalMoves = msg.moves.moves;
+                updateUI();
+            }
+            break;
+
+        case 'error':
+            console.error('Server error:', msg.error);
+            break;
+
+        default:
+            console.log('Unknown WebSocket message type:', msg.type);
+    }
+}
+
+/**
+ * Handle game state update from WebSocket.
+ * @param {Object} game - Updated game state
+ */
+function handleGameUpdate(game) {
+    const newMoveCount = game.moveHistory?.length || 0;
+    const hadNewMove = newMoveCount !== lastMoveCount;
+
+    if (hadNewMove) {
+        lastMoveCount = newMoveCount;
+        const oldStatus = gameState?.status;
+        gameState = game;
+
+        // Show check banner if newly in check
+        if (gameState.status === 'check' && oldStatus !== 'check') {
+            showCheckBanner();
+        }
+
+        // Handle game over
+        if (gameState.status === 'checkmate' || gameState.status === 'stalemate') {
+            setTimeout(() => {
+                handleGameEnd();
+            }, 2000);
+        }
+    } else {
+        // Update state even without new moves (e.g., undo request changes)
+        gameState = game;
+    }
+
+    updateUI();
+}
+
+/**
+ * Handle chat message from WebSocket.
+ * @param {Object} msg - Chat message with player, message, time
+ */
+function handleChatMessage(msg) {
+    // Check if message is already in our local cache
+    const isDuplicate = chatMessages.some(m =>
+        m.player === msg.player &&
+        m.message === msg.message &&
+        m.time === msg.time
+    );
+
+    if (!isDuplicate) {
+        chatMessages.push(msg);
+
+        // Only add to UI if from another player
+        if (msg.player !== playerId) {
+            addChatMessageToUI(msg.message, 'received');
+        }
+
+        // Check if opponent has joined
+        checkForOpponent();
+    }
+}
+
+/**
+ * Send a move via WebSocket.
+ * Falls back to HTTP if WebSocket is not connected.
+ * @param {string} from - Source square
+ * @param {string} to - Destination square
+ * @param {string|null} promotion - Promotion piece type
+ * @returns {Promise<boolean>} - Whether the move was sent
+ */
+async function sendMoveWS(from, to, promotion = null) {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        const payload = { from, to };
+        if (promotion) payload.promotion = promotion;
+
+        ws.send(JSON.stringify({
+            type: 'move',
+            payload
+        }));
+        return true;
+    }
+
+    // Fall back to HTTP
+    return false;
+}
+
+/**
+ * Request legal moves via WebSocket.
+ * Falls back to HTTP if WebSocket is not connected.
+ * @param {string} pos - Square position
+ * @returns {Promise<boolean>} - Whether request was sent via WebSocket
+ */
+async function requestMovesWS(pos) {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'get_moves',
+            payload: { from: pos }
+        }));
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Send chat message via WebSocket.
+ * Falls back to HTTP if WebSocket is not connected.
+ * @param {string} message - Chat message
+ * @returns {Promise<boolean>} - Whether sent via WebSocket
+ */
+async function sendChatWS(message) {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'chat',
+            payload: {
+                player: playerId,
+                message: message,
+                time: Date.now()
+            }
+        }));
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Request undo via WebSocket.
+ * Falls back to HTTP if WebSocket is not connected.
+ * @param {string} color - Color requesting undo
+ * @returns {Promise<boolean>} - Whether sent via WebSocket
+ */
+async function requestUndoWS(color) {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'undo_request',
+            payload: { color }
+        }));
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Accept undo via WebSocket.
+ * @returns {Promise<boolean>} - Whether sent via WebSocket
+ */
+async function acceptUndoWS() {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'undo_accept',
+            payload: {}
+        }));
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Reject undo via WebSocket.
+ * @returns {Promise<boolean>} - Whether sent via WebSocket
+ */
+async function rejectUndoWS() {
+    if (wsConnected && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'undo_reject',
+            payload: {}
+        }));
+        return true;
+    }
+    return false;
 }
 
 /* =============================================================================
@@ -1202,11 +1475,20 @@ async function completePromotion(pieceType) {
 
 /**
  * Fetch legal moves for a piece at the given position.
+ * Uses WebSocket if connected, falls back to HTTP.
  * Updates the legalMoves state variable.
  *
  * @param {string} pos - Square position in algebraic notation
  */
 async function fetchLegalMoves(pos) {
+    // Try WebSocket first
+    const sentViaWS = await requestMovesWS(pos);
+    if (sentViaWS) {
+        // WebSocket will update legalMoves via handleWebSocketMessage
+        return;
+    }
+
+    // Fall back to HTTP
     try {
         const response = await fetch(`${API_BASE}/games/${gameId}/moves?from=${pos}`);
         const data = await response.json();
@@ -1219,6 +1501,7 @@ async function fetchLegalMoves(pos) {
 
 /**
  * Submit a move to the server.
+ * Uses WebSocket if connected, falls back to HTTP.
  * Handles promotion, check detection, and game over states.
  *
  * @param {string} from - Source square (e.g., "e2")
@@ -1226,6 +1509,30 @@ async function fetchLegalMoves(pos) {
  * @param {string|null} promotion - Promotion piece type or null
  */
 async function makeMove(from, to, promotion = null) {
+    // The color that just moved is the current turn (before we update gameState)
+    const movedColor = gameState.turn;
+
+    // Lock player to the color they just moved (first move determines your color)
+    // Only set if not already set and not in debug play mode
+    const isDebugPlayMode = typeof devModeIndex !== 'undefined' && devModeIndex === 2;
+    if (!myColor && !isDebugPlayMode) {
+        myColor = movedColor;
+        sessionStorage.setItem(`myColor_${gameId}`, myColor);
+    }
+
+    // Clear selection immediately for responsive feel
+    selectedSquare = null;
+    legalMoves = [];
+    replayIndex = -1; // Return to live view
+
+    // Try WebSocket first
+    const sentViaWS = await sendMoveWS(from, to, promotion);
+    if (sentViaWS) {
+        // WebSocket will handle response via handleGameUpdate
+        return;
+    }
+
+    // Fall back to HTTP
     try {
         const body = { from, to };
         if (promotion) {
@@ -1244,22 +1551,8 @@ async function makeMove(from, to, promotion = null) {
             return;
         }
 
-        // The color that just moved is the current turn (before we update gameState)
-        const movedColor = gameState.turn;
-
         const oldStatus = gameState?.status;
         gameState = await response.json();
-
-        // Lock player to the color they just moved (first move determines your color)
-        // Only set if not already set and not in debug play mode
-        const isDebugPlayMode = typeof devModeIndex !== 'undefined' && devModeIndex === 2;
-        if (!myColor && !isDebugPlayMode) {
-            myColor = movedColor;
-            sessionStorage.setItem(`myColor_${gameId}`, myColor);
-        }
-        selectedSquare = null;
-        legalMoves = [];
-        replayIndex = -1; // Return to live view
 
         // Show check banner if newly in check
         if (gameState.status === 'check' && oldStatus !== 'check') {
@@ -1325,11 +1618,20 @@ function showCheckBanner() {
 
 /**
  * Request to undo the last move.
+ * Uses WebSocket if connected, falls back to HTTP.
  * Sends request to server; opponent must accept/reject.
  */
 async function requestUndo() {
     if (!gameId || gameState.moveHistory.length === 0) return;
 
+    // Try WebSocket first
+    const sentViaWS = await requestUndoWS(gameState.turn);
+    if (sentViaWS) {
+        // WebSocket will handle response via handleGameUpdate
+        return;
+    }
+
+    // Fall back to HTTP
     try {
         const response = await fetch(`${API_BASE}/games/${gameId}/undo/request`, {
             method: 'POST',
@@ -1346,10 +1648,23 @@ async function requestUndo() {
     }
 }
 
-/** Accept the opponent's undo request. Reverts the last move. */
+/**
+ * Accept the opponent's undo request.
+ * Uses WebSocket if connected, falls back to HTTP.
+ * Reverts the last move.
+ */
 async function acceptUndo() {
     if (!gameId) return;
 
+    // Try WebSocket first
+    const sentViaWS = await acceptUndoWS();
+    if (sentViaWS) {
+        replayIndex = -1;
+        // WebSocket will handle response via handleGameUpdate
+        return;
+    }
+
+    // Fall back to HTTP
     try {
         const response = await fetch(`${API_BASE}/games/${gameId}/undo/accept`, {
             method: 'POST'
@@ -1365,10 +1680,22 @@ async function acceptUndo() {
     }
 }
 
-/** Reject the opponent's undo request. Game continues unchanged. */
+/**
+ * Reject the opponent's undo request.
+ * Uses WebSocket if connected, falls back to HTTP.
+ * Game continues unchanged.
+ */
 async function rejectUndo() {
     if (!gameId) return;
 
+    // Try WebSocket first
+    const sentViaWS = await rejectUndoWS();
+    if (sentViaWS) {
+        // WebSocket will handle response via handleGameUpdate
+        return;
+    }
+
+    // Fall back to HTTP
     try {
         const response = await fetch(`${API_BASE}/games/${gameId}/undo/reject`, {
             method: 'POST'
@@ -1686,6 +2013,7 @@ async function sendChat() {
 
 /**
  * Send a chat message programmatically (without using the input field).
+ * Uses WebSocket if connected, falls back to HTTP.
  * Used for system messages like next game URL.
  * @param {string} message - The message to send
  */
@@ -1695,7 +2023,18 @@ async function sendChatMessage(message) {
     // Add to UI immediately (unless it's a system message)
     addChatMessageToUI(message, 'sent');
 
-    // Send to server
+    // Add to local cache
+    const time = Date.now();
+    chatMessages.push({ player: playerId, message, time });
+
+    // Try WebSocket first
+    const sentViaWS = await sendChatWS(message);
+    if (sentViaWS) {
+        // WebSocket will handle broadcast
+        return;
+    }
+
+    // Fall back to HTTP
     try {
         await fetch(`${API_BASE}/games/${gameId}/chat`, {
             method: 'POST',
@@ -1703,11 +2042,9 @@ async function sendChatMessage(message) {
             body: JSON.stringify({
                 player: playerId,
                 message: message,
-                time: Date.now()
+                time: time
             })
         });
-        // Add to local cache
-        chatMessages.push({ player: playerId, message, time: Date.now() });
     } catch (error) {
         console.error('Failed to send chat:', error);
     }

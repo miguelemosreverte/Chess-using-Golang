@@ -75,6 +75,12 @@ func gamesHandler(w http.ResponseWriter, r *http.Request) {
 func gameHandler(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
+	// Handle WebSocket connections
+	if strings.HasSuffix(path, "/ws") {
+		WebSocketHandler(w, r)
+		return
+	}
+
 	// Handle chat endpoints
 	if strings.HasSuffix(path, "/chat") {
 		switch r.Method {
