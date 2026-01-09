@@ -77,6 +77,9 @@ let myColor = null;
 /** Whether pieces are hidden until user clicks (from book transition) */
 let piecesHidden = false;
 
+/** Which color's pieces are revealed (null = all hidden, 'white'/'black' = that color shown, 'all' = both) */
+let revealedPieces = null;
+
 /** Whether chat is hidden until opponent joins */
 let chatHiddenUntilOpponent = false;
 
@@ -204,16 +207,21 @@ async function init() {
                         transitionOverlay.remove();
                     }, 500);
 
-                    // Reveal pieces
+                    // Reveal only MY pieces (based on assigned color or default to white if first player)
+                    // If no color assigned yet, default to white (first player)
+                    const myPieceColor = myColor || 'white';
+                    revealedPieces = myPieceColor;
                     piecesHidden = false;
                     updateUI();
 
-                    // Send auto-hello
+                    // Send auto-hello to signal we're ready
                     sendAutoHello();
                 });
             } else if (piecesHidden) {
                 // No overlay but pieces hidden - reveal on any board click
                 document.getElementById('board').addEventListener('click', function onBoardClick() {
+                    const myPieceColor = myColor || 'white';
+                    revealedPieces = myPieceColor;
                     piecesHidden = false;
                     updateUI();
                     sendAutoHello();
@@ -258,19 +266,30 @@ async function sendAutoHello() {
 
 /**
  * Check if opponent has joined (by looking at chat messages).
- * If so, reveal the chat panel.
+ * If so, reveal the chat panel and their pieces.
  */
 function checkForOpponent() {
-    if (!chatHiddenUntilOpponent) return;
-
     // Look for messages from other players
     const otherPlayerMessages = chatMessages.filter(msg => msg.player !== playerId);
+
     if (otherPlayerMessages.length > 0) {
-        // Opponent has joined - reveal chat
-        chatHiddenUntilOpponent = false;
-        const chatPanel = document.querySelector('.chat-panel');
-        if (chatPanel) {
-            chatPanel.style.opacity = '1';
+        // Opponent has joined!
+
+        // Reveal chat panel if hidden
+        if (chatHiddenUntilOpponent) {
+            chatHiddenUntilOpponent = false;
+            const chatPanel = document.querySelector('.chat-panel');
+            if (chatPanel) {
+                chatPanel.style.opacity = '1';
+            }
+        }
+
+        // Reveal opponent's pieces if we're in partial reveal mode
+        if (revealedPieces && revealedPieces !== 'all') {
+            // Opponent's color is opposite of what we revealed
+            const opponentColor = revealedPieces === 'white' ? 'black' : 'white';
+            revealedPieces = 'all'; // Now show all pieces
+            updateUI();
         }
     }
 }
@@ -879,8 +898,15 @@ function updateUI() {
         // Reset classes
         square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece/g, '');
 
-        // Set piece (hide if piecesHidden is true)
-        if (piece && !piecesHidden) {
+        // Set piece (check reveal state)
+        // revealedPieces can be: null (all hidden), 'white', 'black', or 'all'
+        const shouldShowPiece = piece && (
+            !piecesHidden ||
+            revealedPieces === 'all' ||
+            revealedPieces === piece.color
+        );
+
+        if (shouldShowPiece) {
             square.textContent = PIECES[piece.color][piece.type];
             square.classList.add(piece.color + '-piece');
         } else {
