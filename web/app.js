@@ -682,6 +682,8 @@ function applyBackground() {
     // Fallback to cover if no corners
     document.body.style.backgroundSize = 'cover, cover';
     document.body.style.backgroundPosition = 'center, center';
+    // Reset chat to default when no calibration
+    updateChatLayout(window.innerWidth, window.innerHeight);
 }
 
 function applyBackgroundWithDimensions(imgDim) {
@@ -696,6 +698,7 @@ function applyBackgroundWithDimensions(imgDim) {
     if (!calibrationViewport) {
         document.body.style.backgroundSize = 'cover, cover';
         document.body.style.backgroundPosition = 'center, center';
+        updateChatLayout(window.innerWidth, window.innerHeight);
         return;
     }
 
@@ -775,6 +778,61 @@ function applyBackgroundWithDimensions(imgDim) {
     // Chess photo size and position, wood texture covers full viewport
     document.body.style.backgroundSize = `${displayWidth}px ${displayHeight}px, cover`;
     document.body.style.backgroundPosition = `${bgPosX}px ${bgPosY}px, center`;
+
+    // Update chat layout based on available space (use scaled viewport, not image size)
+    updateChatLayout(scaledWidth, scaledHeight);
+}
+
+// Update chat panel to fill available space when there's enough room
+function updateChatLayout(contentWidth, contentHeight) {
+    const chatPanel = document.querySelector('.chat-panel');
+    if (!chatPanel) return;
+
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    // Calculate empty space
+    const emptyRight = viewportW - contentWidth;
+    const emptyBottom = viewportH - contentHeight;
+
+    // Threshold: only expand when empty space > 30% of content dimension
+    const rightThreshold = contentWidth * 0.3;
+    const bottomThreshold = contentHeight * 0.3;
+
+    // Remove existing expand classes
+    chatPanel.classList.remove('expand-bottom', 'expand-right');
+
+    // Prefer bottom expansion for portrait, right for landscape excess
+    if (emptyBottom > bottomThreshold && emptyBottom >= emptyRight) {
+        // Expand to fill bottom - use full viewport width
+        chatPanel.classList.add('expand-bottom');
+        chatPanel.style.width = `${viewportW}px`;
+        chatPanel.style.left = '0px';
+        chatPanel.style.right = '0px';
+        chatPanel.style.setProperty('--chat-height', `${emptyBottom}px`);
+
+        // Scale font based on available height (min 0.9rem, max 1.3rem)
+        const fontScale = Math.min(1.3, Math.max(0.9, emptyBottom / 200));
+        chatPanel.style.setProperty('--chat-font-size', `${fontScale}rem`);
+
+    } else if (emptyRight > rightThreshold) {
+        // Expand to fill right
+        chatPanel.classList.add('expand-right');
+        chatPanel.style.setProperty('--chat-width', `${emptyRight}px`);
+
+        // Scale font based on available width (min 0.9rem, max 1.3rem)
+        const fontScale = Math.min(1.3, Math.max(0.9, emptyRight / 250));
+        chatPanel.style.setProperty('--chat-font-size', `${fontScale}rem`);
+
+    } else {
+        // Reset to default positioning
+        chatPanel.style.removeProperty('--chat-height');
+        chatPanel.style.removeProperty('--chat-width');
+        chatPanel.style.removeProperty('--chat-font-size');
+        chatPanel.style.removeProperty('width');
+        chatPanel.style.removeProperty('left');
+        chatPanel.style.removeProperty('right');
+    }
 }
 
 function applyBorder() {

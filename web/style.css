@@ -823,6 +823,92 @@ button:focus {
     background: rgba(255, 255, 255, 0.5);
 }
 
+/* Expanded chat - fills available space at bottom */
+.chat-panel.expand-bottom {
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: var(--chat-height, 30%);
+    background: transparent;
+    transform: none !important;
+    zoom: 1 !important;
+}
+
+.chat-panel.expand-bottom .chat-messages {
+    width: 100%;
+    padding: 16px 20px;
+    gap: 12px;
+    box-sizing: border-box;
+}
+
+.chat-panel.expand-bottom .chat-input-area {
+    width: 100%;
+    padding: 12px 20px 16px;
+    gap: 12px;
+    box-sizing: border-box;
+}
+
+.chat-panel.expand-bottom .chat-message {
+    font-size: var(--chat-font-size, 1rem);
+    padding: 10px 16px;
+    max-width: 70%;
+}
+
+.chat-panel.expand-bottom .chat-input-area {
+    padding: 12px 20px 16px;
+    gap: 12px;
+}
+
+.chat-panel.expand-bottom .chat-input {
+    font-size: var(--chat-font-size, 1rem);
+    padding: 10px 14px;
+}
+
+.chat-panel.expand-bottom .chat-send-btn {
+    font-size: calc(var(--chat-font-size, 1rem) * 0.85);
+    padding: 10px 18px;
+}
+
+/* Expanded chat - fills available space at right */
+.chat-panel.expand-right {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    left: auto;
+    width: var(--chat-width, 30%);
+    height: 100%;
+    background: transparent;
+}
+
+.chat-panel.expand-right .chat-messages {
+    padding: 20px 16px;
+    gap: 12px;
+}
+
+.chat-panel.expand-right .chat-message {
+    font-size: var(--chat-font-size, 1rem);
+    padding: 10px 16px;
+    max-width: 85%;
+}
+
+.chat-panel.expand-right .chat-input-area {
+    padding: 16px;
+    gap: 12px;
+}
+
+.chat-panel.expand-right .chat-input {
+    font-size: var(--chat-font-size, 1rem);
+    padding: 10px 14px;
+}
+
+.chat-panel.expand-right .chat-send-btn {
+    font-size: calc(var(--chat-font-size, 1rem) * 0.85);
+    padding: 10px 18px;
+}
+
 /* Dev controls legend - hidden by default */
 .dev-legend {
     position: fixed;
