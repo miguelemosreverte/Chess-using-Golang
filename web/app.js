@@ -663,58 +663,46 @@ function applyBackgroundWithDimensions(imgDim) {
     // Force reflow to ensure transform is applied before measuring
     void board.offsetHeight;
     const boardRect = board.getBoundingClientRect();
-    const imgAspect = imgDim.width / imgDim.height;
 
-    console.log('applyBackground:', {
-        viewport: { w: window.innerWidth, h: window.innerHeight },
-        calibrationViewport,
-        boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
-        corners: corners.map(c => ({ x: c.x.toFixed(3), y: c.y.toFixed(3) }))
-    });
+    // Need calibration data to calculate fixed size
+    if (!calibrationViewport) {
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        return;
+    }
 
-    // Use corners directly as viewport percentages (same as board transform uses)
-    // This keeps the background in sync with the board's perspective transform
+    // Calculate image size based on CALIBRATION viewport - this stays FIXED
+    const calVW = calibrationViewport.width;
+    const calVH = calibrationViewport.height;
+    const calCoverScale = Math.max(calVW / imgDim.width, calVH / imgDim.height);
+    const displayWidth = imgDim.width * calCoverScale;
+    const displayHeight = imgDim.height * calCoverScale;
+
+    // Calculate where the board center was on the image at calibration time
     const minX = Math.min(...corners.map(c => c.x));
     const maxX = Math.max(...corners.map(c => c.x));
     const minY = Math.min(...corners.map(c => c.y));
     const maxY = Math.max(...corners.map(c => c.y));
 
-    // What percentage of the image does the board occupy?
-    const boardWidthPercent = maxX - minX;
-    const boardHeightPercent = maxY - minY;
+    // Corners center in calibration viewport pixels
+    const calCornersCenterX = ((minX + maxX) / 2) * calVW;
+    const calCornersCenterY = ((minY + maxY) / 2) * calVH;
 
-    // Calculate required scale to match board size (maintain aspect ratio)
-    const scaleByWidth = boardRect.width / boardWidthPercent;
-    const scaleByHeight = boardRect.height / boardHeightPercent;
+    // Image offset at calibration (centered, so overflow on each side)
+    const calImgOffsetX = (displayWidth - calVW) / 2;
+    const calImgOffsetY = (displayHeight - calVH) / 2;
 
-    // Average the scales to balance both dimensions while maintaining aspect ratio
-    let displayWidth = (scaleByWidth + scaleByHeight * imgAspect) / 2;
-    let displayHeight = displayWidth / imgAspect;
+    // Board center position ON THE IMAGE (in image pixels)
+    const boardOnImgX = calCornersCenterX + calImgOffsetX;
+    const boardOnImgY = calCornersCenterY + calImgOffsetY;
 
-    // Ensure image covers the viewport (no tiling) - like "cover" but board-aligned
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const coverWidth = Math.max(vw, vh * imgAspect);
-    const coverHeight = coverWidth / imgAspect;
-
-    // Use the larger of board-matching size or cover size
-    if (displayWidth < coverWidth || displayHeight < coverHeight) {
-        const scale = Math.max(coverWidth / displayWidth, coverHeight / displayHeight);
-        displayWidth *= scale;
-        displayHeight *= scale;
-    }
-
-    // Calculate position: the board center should align with corners center
-    const cornersCenterX = (minX + maxX) / 2;
-    const cornersCenterY = (minY + maxY) / 2;
-
-    // Board center in viewport
+    // Current board center in viewport
     const boardCenterX = boardRect.left + boardRect.width / 2;
     const boardCenterY = boardRect.top + boardRect.height / 2;
 
-    // Background position: where the image's top-left corner goes
-    const bgPosX = boardCenterX - (cornersCenterX * displayWidth);
-    const bgPosY = boardCenterY - (cornersCenterY * displayHeight);
+    // Position image so boardOnImg aligns with current board center
+    const bgPosX = boardCenterX - boardOnImgX;
+    const bgPosY = boardCenterY - boardOnImgY;
 
     document.body.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
     document.body.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
