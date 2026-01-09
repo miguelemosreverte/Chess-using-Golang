@@ -6,6 +6,23 @@
     box-sizing: border-box;
 }
 
+/* Hidden UI by default - click outside board to toggle */
+.game-info,
+.controls,
+.move-history,
+.replay-controls {
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.menu-visible .game-info,
+body.menu-visible .controls,
+body.menu-visible .move-history,
+body.menu-visible .replay-controls {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
     background: url('wood-bg.jpg');
