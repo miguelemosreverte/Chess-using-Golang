@@ -47,7 +47,8 @@ const BG_CONFIGS = {
 // Dev controls for board positioning
 let devMode = false;
 let borderHidden = false;
-let corners = []; // [{x, y}, ...] as percentages
+let corners = []; // [{x, y}, ...] as percentages of viewport at calibration time
+let calibrationViewport = null; // {width, height} - viewport size when corners were calibrated
 let cornerHandles = []; // DOM elements for dragging
 let draggingHandle = null;
 
@@ -77,6 +78,11 @@ async function init() {
     // Setup background after board is rendered
     requestAnimationFrame(() => {
         setupBackgroundToggle();
+    });
+
+    // Re-apply background on resize to keep it locked to the board
+    window.addEventListener('resize', () => {
+        applyBackground();
     });
 
     // Start polling for updates
@@ -235,6 +241,7 @@ async function loadBgConfig() {
             const config = await response.json();
             corners = [...config.corners];
             borderHidden = config.border === false;
+            calibrationViewport = config.calibrationViewport || null;
             applyCornerTransform();
             applyBorder();
 
@@ -253,10 +260,12 @@ async function loadBgConfig() {
     if (config) {
         corners = [...config.corners];
         borderHidden = config.border === false;
+        calibrationViewport = config.calibrationViewport || null;
         applyCornerTransform();
         applyBorder();
     } else {
         corners = [];
+        calibrationViewport = null;
         borderHidden = false;
         resetBoardTransform();
         applyBorder();
@@ -312,7 +321,12 @@ async function saveConfigToServer() {
     const bgName = BACKGROUNDS[currentBgIndex];
     const config = {
         corners: corners,
-        border: !borderHidden
+        border: !borderHidden,
+        // Store calibration viewport size so we can convert coordinates correctly on different screens
+        calibrationViewport: {
+            width: window.innerWidth,
+            height: window.innerHeight
+        }
     };
 
     try {
@@ -325,7 +339,11 @@ async function saveConfigToServer() {
         if (response.ok) {
             updateLegendStatus('Saved!');
             // Update local config too
-            BG_CONFIGS[bgName] = { corners: [...corners], border: !borderHidden };
+            BG_CONFIGS[bgName] = {
+                corners: [...corners],
+                border: !borderHidden,
+                calibrationViewport: { ...config.calibrationViewport }
+            };
         } else {
             updateLegendStatus('Save failed');
         }
@@ -543,8 +561,105 @@ function solveLinearSystem(A, b) {
     return x;
 }
 
+// Cache for loaded image dimensions
+const imageDimensions = {};
+
 function applyBackground() {
-    document.body.style.backgroundImage = `url('${BACKGROUNDS[currentBgIndex]}')`;
+    const bgUrl = BACKGROUNDS[currentBgIndex];
+    document.body.style.backgroundImage = `url('${bgUrl}')`;
+
+    // Scale background to match board - so they stay locked together on resize
+    if (corners.length === 4) {
+        // Need image dimensions to calculate correct aspect ratio
+        if (imageDimensions[bgUrl]) {
+            applyBackgroundWithDimensions(imageDimensions[bgUrl]);
+        } else {
+            // Load image to get dimensions, then apply
+            const img = new Image();
+            img.onload = () => {
+                imageDimensions[bgUrl] = { width: img.naturalWidth, height: img.naturalHeight };
+                applyBackgroundWithDimensions(imageDimensions[bgUrl]);
+            };
+            img.src = bgUrl;
+            // Fallback while loading
+            document.body.style.backgroundSize = 'cover';
+            document.body.style.backgroundPosition = 'center';
+        }
+        return;
+    }
+
+    // Fallback to cover if no corners
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+}
+
+function applyBackgroundWithDimensions(imgDim) {
+    const board = document.getElementById('board');
+    if (!board || corners.length !== 4) return;
+
+    const boardRect = board.getBoundingClientRect();
+    const imgAspect = imgDim.width / imgDim.height;
+
+    // Convert viewport-percentage corners to image-percentage corners
+    // This requires knowing how `cover` positioned the image at calibration time
+    let imageCorners = corners;
+
+    if (calibrationViewport) {
+        // Calculate how `cover` scaled the image at calibration time
+        const calVW = calibrationViewport.width;
+        const calVH = calibrationViewport.height;
+        const calScale = Math.max(calVW / imgDim.width, calVH / imgDim.height);
+
+        // Image size when displayed with cover at calibration viewport
+        const calImgDisplayW = imgDim.width * calScale;
+        const calImgDisplayH = imgDim.height * calScale;
+
+        // Offset due to centering (how much of image is cropped on each side)
+        const calOffsetX = (calImgDisplayW - calVW) / 2;
+        const calOffsetY = (calImgDisplayH - calVH) / 2;
+
+        // Convert viewport percentages to image percentages
+        imageCorners = corners.map(c => ({
+            // viewport pixel = c.x * calVW
+            // image pixel = viewport pixel + calOffsetX
+            // image percentage = image pixel / calImgDisplayW
+            x: (c.x * calVW + calOffsetX) / calImgDisplayW,
+            y: (c.y * calVH + calOffsetY) / calImgDisplayH
+        }));
+    }
+
+    // Now imageCorners are percentages of the full image (0-1)
+    const minX = Math.min(...imageCorners.map(c => c.x));
+    const maxX = Math.max(...imageCorners.map(c => c.x));
+    const minY = Math.min(...imageCorners.map(c => c.y));
+    const maxY = Math.max(...imageCorners.map(c => c.y));
+
+    // What percentage of the image does the board occupy?
+    const boardWidthPercent = maxX - minX;
+    const boardHeightPercent = maxY - minY;
+
+    // Calculate required scale to match board size (maintain aspect ratio)
+    const scaleByWidth = boardRect.width / boardWidthPercent;
+    const scaleByHeight = boardRect.height / boardHeightPercent;
+
+    // Average the scales to balance both dimensions while maintaining aspect ratio
+    const displayWidth = (scaleByWidth + scaleByHeight * imgAspect) / 2;
+    const displayHeight = displayWidth / imgAspect;
+
+    // Calculate position: the board center should align with corners center
+    const cornersCenterX = (minX + maxX) / 2;
+    const cornersCenterY = (minY + maxY) / 2;
+
+    // Board center in viewport
+    const boardCenterX = boardRect.left + boardRect.width / 2;
+    const boardCenterY = boardRect.top + boardRect.height / 2;
+
+    // Background position: where the image's top-left corner goes
+    const bgPosX = boardCenterX - (cornersCenterX * displayWidth);
+    const bgPosY = boardCenterY - (cornersCenterY * displayHeight);
+
+    document.body.style.backgroundSize = `${displayWidth}px ${displayHeight}px`;
+    document.body.style.backgroundPosition = `${bgPosX}px ${bgPosY}px`;
 }
 
 function applyBorder() {
