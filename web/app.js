@@ -109,7 +109,7 @@ async function loadChat() {
 }
 
 // Background toggle with arrow keys and draggable corner dev controls
-function setupBackgroundToggle() {
+async function setupBackgroundToggle() {
     const params = new URLSearchParams(window.location.search);
 
     // Load background from URL or cycle to next
@@ -128,9 +128,12 @@ function setupBackgroundToggle() {
     }
     localStorage.setItem('lastBgIndex', currentBgIndex.toString());
 
-    // Load config from server or saved config
-    loadBgConfig();
-    applyBackground();
+    // Load config from server FIRST, then apply background with correct data
+    await loadBgConfig();
+    // Wait for next frame to ensure board transform is rendered before measuring
+    requestAnimationFrame(() => {
+        applyBackground();
+    });
 
     // Key listeners
     document.addEventListener('keydown', (e) => {
@@ -400,11 +403,49 @@ function applyCornerTransform() {
         { x: 0, y: rect.height }                 // BL
     ];
 
-    // Convert percentage corners to pixels, relative to board's original position
-    const dst = corners.map(c => ({
-        x: c.x * window.innerWidth - rect.left,
-        y: c.y * window.innerHeight - rect.top
-    }));
+    // Convert corners to destination positions
+    // If we have calibration data, scale corners relative to board center
+    let dst;
+    if (calibrationViewport) {
+        // Calculate where corners were relative to viewport center at calibration
+        const calCenterX = calibrationViewport.width / 2;
+        const calCenterY = calibrationViewport.height / 2;
+
+        // Calculate board size at calibration vs now
+        const calBoardSize = Math.min(480, calibrationViewport.width * 0.88);
+        const curBoardSize = rect.width; // Current board size
+        const scale = curBoardSize / calBoardSize;
+
+        // Current viewport center
+        const curCenterX = window.innerWidth / 2;
+        const curCenterY = window.innerHeight / 2;
+
+        // Transform corners: convert from calibration viewport to current viewport
+        dst = corners.map(c => {
+            // Position at calibration time (pixels)
+            const calX = c.x * calibrationViewport.width;
+            const calY = c.y * calibrationViewport.height;
+
+            // Position relative to calibration center
+            const relX = calX - calCenterX;
+            const relY = calY - calCenterY;
+
+            // Scale and position relative to current center
+            const curX = curCenterX + relX * scale;
+            const curY = curCenterY + relY * scale;
+
+            return {
+                x: curX - rect.left,
+                y: curY - rect.top
+            };
+        });
+    } else {
+        // Fallback: use viewport percentages directly (old behavior)
+        dst = corners.map(c => ({
+            x: c.x * window.innerWidth - rect.left,
+            y: c.y * window.innerHeight - rect.top
+        }));
+    }
 
     // Calculate perspective transform
     const matrix = computeTransformMatrix(src, dst);
@@ -420,11 +461,33 @@ function applyCornerTransform() {
 function applyUITransform(boardRect) {
     if (corners.length !== 4) return;
 
-    // Calculate scale and skew from corners
-    const dstPixels = corners.map(c => ({
-        x: c.x * window.innerWidth,
-        y: c.y * window.innerHeight
-    }));
+    // Calculate scale and skew from corners (using same calibration logic as board transform)
+    let dstPixels;
+    if (calibrationViewport) {
+        const calCenterX = calibrationViewport.width / 2;
+        const calCenterY = calibrationViewport.height / 2;
+        const calBoardSize = Math.min(480, calibrationViewport.width * 0.88);
+        const curBoardSize = boardRect.width;
+        const scale = curBoardSize / calBoardSize;
+        const curCenterX = window.innerWidth / 2;
+        const curCenterY = window.innerHeight / 2;
+
+        dstPixels = corners.map(c => {
+            const calX = c.x * calibrationViewport.width;
+            const calY = c.y * calibrationViewport.height;
+            const relX = calX - calCenterX;
+            const relY = calY - calCenterY;
+            return {
+                x: curCenterX + relX * scale,
+                y: curCenterY + relY * scale
+            };
+        });
+    } else {
+        dstPixels = corners.map(c => ({
+            x: c.x * window.innerWidth,
+            y: c.y * window.innerHeight
+        }));
+    }
 
     // Sort to get TL, TR, BR, BL
     const sorted = [...dstPixels].sort((a, b) => a.y - b.y);
@@ -597,42 +660,24 @@ function applyBackgroundWithDimensions(imgDim) {
     const board = document.getElementById('board');
     if (!board || corners.length !== 4) return;
 
+    // Force reflow to ensure transform is applied before measuring
+    void board.offsetHeight;
     const boardRect = board.getBoundingClientRect();
     const imgAspect = imgDim.width / imgDim.height;
 
-    // Convert viewport-percentage corners to image-percentage corners
-    // This requires knowing how `cover` positioned the image at calibration time
-    let imageCorners = corners;
+    console.log('applyBackground:', {
+        viewport: { w: window.innerWidth, h: window.innerHeight },
+        calibrationViewport,
+        boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
+        corners: corners.map(c => ({ x: c.x.toFixed(3), y: c.y.toFixed(3) }))
+    });
 
-    if (calibrationViewport) {
-        // Calculate how `cover` scaled the image at calibration time
-        const calVW = calibrationViewport.width;
-        const calVH = calibrationViewport.height;
-        const calScale = Math.max(calVW / imgDim.width, calVH / imgDim.height);
-
-        // Image size when displayed with cover at calibration viewport
-        const calImgDisplayW = imgDim.width * calScale;
-        const calImgDisplayH = imgDim.height * calScale;
-
-        // Offset due to centering (how much of image is cropped on each side)
-        const calOffsetX = (calImgDisplayW - calVW) / 2;
-        const calOffsetY = (calImgDisplayH - calVH) / 2;
-
-        // Convert viewport percentages to image percentages
-        imageCorners = corners.map(c => ({
-            // viewport pixel = c.x * calVW
-            // image pixel = viewport pixel + calOffsetX
-            // image percentage = image pixel / calImgDisplayW
-            x: (c.x * calVW + calOffsetX) / calImgDisplayW,
-            y: (c.y * calVH + calOffsetY) / calImgDisplayH
-        }));
-    }
-
-    // Now imageCorners are percentages of the full image (0-1)
-    const minX = Math.min(...imageCorners.map(c => c.x));
-    const maxX = Math.max(...imageCorners.map(c => c.x));
-    const minY = Math.min(...imageCorners.map(c => c.y));
-    const maxY = Math.max(...imageCorners.map(c => c.y));
+    // Use corners directly as viewport percentages (same as board transform uses)
+    // This keeps the background in sync with the board's perspective transform
+    const minX = Math.min(...corners.map(c => c.x));
+    const maxX = Math.max(...corners.map(c => c.x));
+    const minY = Math.min(...corners.map(c => c.y));
+    const maxY = Math.max(...corners.map(c => c.y));
 
     // What percentage of the image does the board occupy?
     const boardWidthPercent = maxX - minX;
@@ -643,8 +688,21 @@ function applyBackgroundWithDimensions(imgDim) {
     const scaleByHeight = boardRect.height / boardHeightPercent;
 
     // Average the scales to balance both dimensions while maintaining aspect ratio
-    const displayWidth = (scaleByWidth + scaleByHeight * imgAspect) / 2;
-    const displayHeight = displayWidth / imgAspect;
+    let displayWidth = (scaleByWidth + scaleByHeight * imgAspect) / 2;
+    let displayHeight = displayWidth / imgAspect;
+
+    // Ensure image covers the viewport (no tiling) - like "cover" but board-aligned
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const coverWidth = Math.max(vw, vh * imgAspect);
+    const coverHeight = coverWidth / imgAspect;
+
+    // Use the larger of board-matching size or cover size
+    if (displayWidth < coverWidth || displayHeight < coverHeight) {
+        const scale = Math.max(coverWidth / displayWidth, coverHeight / displayHeight);
+        displayWidth *= scale;
+        displayHeight *= scale;
+    }
 
     // Calculate position: the board center should align with corners center
     const cornersCenterX = (minX + maxX) / 2;

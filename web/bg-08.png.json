@@ -1,5 +1,9 @@
 {
   "border": true,
+  "calibrationViewport": {
+    "height": 778,
+    "width": 1512
+  },
   "corners": [
     {
       "x": 0.30224867724867727,
