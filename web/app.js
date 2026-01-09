@@ -414,7 +414,14 @@ function applyCornerTransform() {
         // Calculate board size at calibration vs now
         const calBoardSize = Math.min(480, calibrationViewport.width * 0.88);
         const curBoardSize = rect.width; // Current board size
-        const scale = curBoardSize / calBoardSize;
+        const scaleByBoard = curBoardSize / calBoardSize;
+
+        // Also scale by viewport to ensure corners fit on narrow screens
+        const scaleByViewportW = window.innerWidth / calibrationViewport.width;
+        const scaleByViewportH = window.innerHeight / calibrationViewport.height;
+
+        // Use the smallest scale to ensure everything fits
+        const scale = Math.min(scaleByBoard, scaleByViewportW, scaleByViewportH);
 
         // Current viewport center
         const curCenterX = window.innerWidth / 2;
@@ -468,7 +475,10 @@ function applyUITransform(boardRect) {
         const calCenterY = calibrationViewport.height / 2;
         const calBoardSize = Math.min(480, calibrationViewport.width * 0.88);
         const curBoardSize = boardRect.width;
-        const scale = curBoardSize / calBoardSize;
+        const scaleByBoard = curBoardSize / calBoardSize;
+        const scaleByViewportW = window.innerWidth / calibrationViewport.width;
+        const scaleByViewportH = window.innerHeight / calibrationViewport.height;
+        const scale = Math.min(scaleByBoard, scaleByViewportW, scaleByViewportH);
         const curCenterX = window.innerWidth / 2;
         const curCenterY = window.innerHeight / 2;
 
@@ -671,12 +681,25 @@ function applyBackgroundWithDimensions(imgDim) {
         return;
     }
 
-    // Calculate image size based on CALIBRATION viewport - this stays FIXED
     const calVW = calibrationViewport.width;
     const calVH = calibrationViewport.height;
+
+    // Calculate the same scale factor used by the board transform
+    const calBoardSize = Math.min(480, calVW * 0.88);
+    const curBoardSize = Math.min(480, window.innerWidth * 0.88);
+    const scaleByBoard = curBoardSize / calBoardSize;
+    const scaleByViewportW = window.innerWidth / calVW;
+    const scaleByViewportH = window.innerHeight / calVH;
+    const scale = Math.min(scaleByBoard, scaleByViewportW, scaleByViewportH);
+
+    // Calculate image size at calibration, then scale it
     const calCoverScale = Math.max(calVW / imgDim.width, calVH / imgDim.height);
-    const displayWidth = imgDim.width * calCoverScale;
-    const displayHeight = imgDim.height * calCoverScale;
+    const calDisplayWidth = imgDim.width * calCoverScale;
+    const calDisplayHeight = imgDim.height * calCoverScale;
+
+    // Scale the image by the same factor as the board transform
+    const displayWidth = calDisplayWidth * scale;
+    const displayHeight = calDisplayHeight * scale;
 
     // Calculate where the board center was on the image at calibration time
     const minX = Math.min(...corners.map(c => c.x));
@@ -689,12 +712,16 @@ function applyBackgroundWithDimensions(imgDim) {
     const calCornersCenterY = ((minY + maxY) / 2) * calVH;
 
     // Image offset at calibration (centered, so overflow on each side)
-    const calImgOffsetX = (displayWidth - calVW) / 2;
-    const calImgOffsetY = (displayHeight - calVH) / 2;
+    const calImgOffsetX = (calDisplayWidth - calVW) / 2;
+    const calImgOffsetY = (calDisplayHeight - calVH) / 2;
 
-    // Board center position ON THE IMAGE (in image pixels)
-    const boardOnImgX = calCornersCenterX + calImgOffsetX;
-    const boardOnImgY = calCornersCenterY + calImgOffsetY;
+    // Board center position ON THE IMAGE at calibration (in image pixels)
+    const calBoardOnImgX = calCornersCenterX + calImgOffsetX;
+    const calBoardOnImgY = calCornersCenterY + calImgOffsetY;
+
+    // Scale the board position on image
+    const boardOnImgX = calBoardOnImgX * scale;
+    const boardOnImgY = calBoardOnImgY * scale;
 
     // Current board center in viewport
     const boardCenterX = boardRect.left + boardRect.width / 2;
