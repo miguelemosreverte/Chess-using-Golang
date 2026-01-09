@@ -825,16 +825,14 @@ button:focus {
 
 /* Expanded chat - fills available space at bottom */
 .chat-panel.expand-bottom {
-    top: auto !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: none;
     height: var(--chat-height, 30%);
     background: transparent;
-    transform: none !important;
-    zoom: 1 !important;
 }
 
 .chat-panel.expand-bottom .chat-messages {
