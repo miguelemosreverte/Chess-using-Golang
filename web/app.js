@@ -762,19 +762,12 @@ function applyBackgroundWithDimensions(imgDim) {
     const scaledHeight = calVH * scale;
 
     if (scaledHeight < window.innerHeight) {
-        // Content doesn't fill height - align to top
-        // Recalculate Y position based on top alignment
-        const calCornersCenterY = ((minY + maxY) / 2) * calVH;
-        const newCenterY = scaledHeight / 2;
-        const boardCenterY = boardRect.top + boardRect.height / 2;
+        // Content doesn't fill height - align to top for chat space at bottom
         bgPosY = boardCenterY - (calCornersCenterY * scale + (calDisplayHeight * scale - scaledHeight) / 2);
     }
 
     if (scaledWidth < window.innerWidth) {
-        // Content doesn't fill width - align to left
-        const calCornersCenterX = ((minX + maxX) / 2) * calVW;
-        const newCenterX = scaledWidth / 2;
-        const boardCenterX = boardRect.left + boardRect.width / 2;
+        // Content doesn't fill width - align to left for chat space at right
         bgPosX = boardCenterX - (calCornersCenterX * scale + (calDisplayWidth * scale - scaledWidth) / 2);
     }
 

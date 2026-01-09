@@ -857,11 +857,6 @@ button:focus {
     max-width: 70%;
 }
 
-.chat-panel.expand-bottom .chat-input-area {
-    padding: 12px 20px 16px;
-    gap: 12px;
-}
-
 .chat-panel.expand-bottom .chat-input {
     font-size: var(--chat-font-size, 1rem);
     padding: 10px 14px;
