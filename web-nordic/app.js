@@ -16,7 +16,6 @@ let legalMoves = [];
 let pendingPromotion = null; // { from, to } when awaiting promotion choice
 let replayIndex = -1; // -1 means live view, >= 0 means viewing history
 let previousStatus = null; // Track status changes for animations
-let singleMoveHint = null; // { from, to } when in check with only one legal move
 
 // Initialize the app
 async function init() {
@@ -38,7 +37,6 @@ async function newGame() {
         pendingPromotion = null;
         replayIndex = -1;
         previousStatus = null;
-        singleMoveHint = null;
         hideGameOverModal();
         updateUI();
     } catch (error) {
@@ -165,37 +163,6 @@ async function fetchLegalMoves(pos) {
     }
 }
 
-// Fetch all legal moves and check for single move hint (when in check)
-async function checkForSingleMoveHint() {
-    singleMoveHint = null;
-
-    if (gameState.status !== 'check') return;
-
-    try {
-        // Get all pieces of current player and their legal moves
-        const allMoves = [];
-        const board = gameState.board;
-
-        for (const pos of Object.keys(board)) {
-            const piece = board[pos];
-            if (piece && piece.color === gameState.turn) {
-                const response = await fetch(`${API_BASE}/games/${gameId}/moves?from=${pos}`);
-                const data = await response.json();
-                if (data.moves && data.moves.length > 0) {
-                    allMoves.push(...data.moves);
-                }
-            }
-        }
-
-        // If exactly one legal move exists, set the hint
-        if (allMoves.length === 1) {
-            singleMoveHint = { from: allMoves[0].from, to: allMoves[0].to };
-        }
-    } catch (error) {
-        console.error('Failed to check for single move hint:', error);
-    }
-}
-
 // Make a move
 async function makeMove(from, to, promotion = null) {
     try {
@@ -225,13 +192,6 @@ async function makeMove(from, to, promotion = null) {
         // Show check banner if newly in check
         if (gameState.status === 'check' && oldStatus !== 'check') {
             showCheckBanner();
-        }
-
-        // Check for single move hint when in check
-        if (gameState.status === 'check') {
-            await checkForSingleMoveHint();
-        } else {
-            singleMoveHint = null;
         }
 
         // Show game over modal
@@ -474,7 +434,7 @@ function updateUI() {
         const piece = displayBoard[pos];
 
         // Reset classes
-        square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece| hint-from| hint-to/g, '');
+        square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece/g, '');
 
         // Set piece
         if (piece) {
@@ -504,16 +464,6 @@ function updateUI() {
             // Highlight king in check
             if (gameState.checkSquare === pos) {
                 square.classList.add('in-check');
-            }
-
-            // Show single move hint when in check with only one legal move
-            if (singleMoveHint) {
-                if (pos === singleMoveHint.from) {
-                    square.classList.add('hint-from');
-                }
-                if (pos === singleMoveHint.to) {
-                    square.classList.add('hint-to');
-                }
             }
         }
 

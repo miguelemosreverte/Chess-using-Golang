@@ -1,3 +1,5 @@
+/* Chess UI - Minimalist with Real Wood Textures */
+
 * {
     margin: 0;
     padding: 0;
@@ -5,269 +7,408 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
+    background: url('wood-bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
     min-height: 100vh;
-    color: #fff;
+    color: #333;
+    font-weight: 300;
+    letter-spacing: 0.02em;
 }
 
 .container {
-    max-width: 600px;
+    max-width: 540px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 60px 20px;
 }
 
-h1 {
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 2.5rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-}
-
+/* Game info - readable on wood background */
 .game-info {
     display: flex;
-    justify-content: space-between;
-    margin-bottom: 20px;
-    padding: 15px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 10px;
-    font-size: 1.1rem;
+    justify-content: center;
+    gap: 40px;
+    margin-bottom: 40px;
+    padding: 12px 24px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .game-info span {
-    font-weight: bold;
+    font-weight: 400;
+    color: #fff;
     text-transform: capitalize;
 }
 
 #turn {
-    color: #4ade80;
+    color: #fff !important;
 }
 
 #status {
-    color: #60a5fa;
+    color: rgba(255, 255, 255, 0.8) !important;
 }
 
+/* Board wrapper for wooden frame */
 .board-container {
     display: flex;
     justify-content: center;
-    margin-bottom: 20px;
+    margin-bottom: 40px;
+    position: relative;
 }
 
+.board-container::before {
+    content: '';
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(min(480px, 88vw) + 40px);
+    height: calc(min(480px, 88vw) + 40px);
+    background: url('wood-border.jpg');
+    background-size: cover;
+    background-position: center;
+    border-radius: 4px;
+    z-index: -1;
+    /* Ambient occlusion - soft shadows grounding the board */
+    box-shadow:
+        /* Contact shadow - dark, tight, blurred */
+        0 2px 4px rgba(0, 0, 0, 0.2),
+        0 4px 8px rgba(0, 0, 0, 0.15),
+        /* Mid-range ambient shadow */
+        0 8px 16px rgba(0, 0, 0, 0.12),
+        0 16px 32px rgba(0, 0, 0, 0.10),
+        /* Far ambient shadow - soft, wide spread */
+        0 32px 64px rgba(0, 0, 0, 0.08),
+        /* Very soft outer glow for depth */
+        0 0 100px rgba(0, 0, 0, 0.05);
+}
+
+/* The chess board - layered wood textures with checkerboard mask */
 .board {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(8, 1fr);
-    width: min(500px, 90vw);
-    height: min(500px, 90vw);
-    border: 4px solid #334155;
-    border-radius: 4px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-}
-
-.square {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: min(50px, 10vw);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    user-select: none;
-}
-
-/* Piece colors */
-.square.white-piece {
-    color: #fff;
-    text-shadow: 0 0 3px #000, 0 0 5px #000;
-}
-
-.square.black-piece {
-    color: #1a1a2e;
-    text-shadow: 0 0 2px rgba(255,255,255,0.3);
-}
-
-.square.light {
-    background: #e2e8f0;
-}
-
-.square.dark {
-    background: #64748b;
-}
-
-.square:hover {
-    filter: brightness(1.1);
-}
-
-.square.selected {
-    background: #fbbf24 !important;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
-}
-
-.square.legal-move {
+    width: min(480px, 88vw);
+    height: min(480px, 88vw);
+    border: none;
     position: relative;
+    /* Light wood as base layer */
+    background: url('wood-light.jpg');
+    background-size: cover;
+    /* Inner shadow for recessed look */
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.15);
 }
 
-.square.legal-move::after {
-    content: '';
-    position: absolute;
-    width: 30%;
-    height: 30%;
-    background: rgba(34, 197, 94, 0.6);
-    border-radius: 50%;
-}
-
-.square.legal-capture {
-    position: relative;
-    animation: capture-pulse 1s ease-in-out infinite;
-}
-
-.square.legal-capture::before {
+/* Dark wood overlay with checkerboard mask */
+.board::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(239, 68, 68, 0.3);
+    background: url('wood-dark.jpg');
+    background-size: cover;
+    pointer-events: none;
+    /* Checkerboard mask - dark squares visible */
+    --sq: calc(100% / 8);
+    mask-image:
+        repeating-conic-gradient(#000 0% 25%, transparent 0% 50%);
+    mask-size: calc(100% / 4) calc(100% / 4);
+    -webkit-mask-image:
+        repeating-conic-gradient(#000 0% 25%, transparent 0% 50%);
+    -webkit-mask-size: calc(100% / 4) calc(100% / 4);
+}
+
+/* Board squares - transparent to show wood beneath */
+.square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: min(48px, 9.5vw);
+    cursor: pointer;
+    transition: filter 0.15s ease;
+    user-select: none;
+    position: relative;
+    z-index: 1;
+    background: transparent;
+}
+
+/* No separate backgrounds for squares - wood shows through */
+.square.light {
+    background: transparent;
+}
+
+.square.dark {
+    background: transparent;
+}
+
+/* White pieces - Cream/Ivory */
+.square.white-piece {
+    color: #faf5e8;
+    text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        0 0 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Black pieces - Dark ebony */
+.square.black-piece {
+    color: #1a1008;
+    text-shadow:
+        0 0 2px rgba(250, 245, 232, 0.15);
+}
+
+/* Hover state */
+.square:hover {
+    filter: brightness(1.06);
+}
+
+/* Selected square */
+.square.selected {
+    background:
+        linear-gradient(
+            135deg,
+            #d4a556 0%,
+            #c9952e 35%,
+            #b8872a 50%,
+            #d4a556 75%,
+            #e0b060 100%
+        ) !important;
+    box-shadow: inset 0 0 15px rgba(120, 90, 30, 0.4);
+}
+
+/* Legal move indicator - subtle brass dot */
+.square.legal-move::after {
+    content: '';
+    position: absolute;
+    width: 26%;
+    height: 26%;
+    background:
+        radial-gradient(
+            circle,
+            rgba(120, 90, 30, 0.7) 0%,
+            rgba(90, 65, 20, 0.5) 70%,
+            transparent 100%
+        );
+    border-radius: 50%;
+}
+
+/* Legal capture - subtle ring */
+.square.legal-capture {
+    position: relative;
+}
+
+.square.legal-capture::before {
+    content: '';
+    position: absolute;
+    top: 6%;
+    left: 6%;
+    right: 6%;
+    bottom: 6%;
+    border: 3px solid rgba(120, 90, 30, 0.6);
+    border-radius: 50%;
     z-index: 1;
 }
 
 .square.legal-capture::after {
-    content: '×';
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2.5em;
-    font-weight: bold;
-    color: rgba(239, 68, 68, 0.8);
-    z-index: 2;
-    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    display: none;
 }
 
-@keyframes capture-pulse {
-    0%, 100% { box-shadow: inset 0 0 15px rgba(239, 68, 68, 0.4); }
-    50% { box-shadow: inset 0 0 25px rgba(239, 68, 68, 0.7); }
-}
-
+/* Last move highlight */
 .square.last-move {
-    background: rgba(250, 204, 21, 0.4) !important;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(180, 140, 50, 0.35) 0%,
+            rgba(160, 120, 40, 0.30) 50%,
+            rgba(140, 100, 30, 0.35) 100%
+        ) !important;
 }
 
+/* Controls - buttons on wood background */
 .controls {
     display: flex;
     justify-content: center;
-    margin-bottom: 20px;
+    gap: 16px;
+    margin-bottom: 40px;
 }
 
 button {
-    padding: 12px 30px;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #fff;
-    background: #3b82f6;
-    border: none;
-    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 button:hover {
-    background: #2563eb;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(0, 0, 0, 0.6);
+    transform: none;
+    box-shadow: none;
 }
 
 button:active {
-    transform: translateY(0);
+    background: rgba(0, 0, 0, 0.7);
 }
 
+/* Move history - on wood background */
 .move-history {
-    background: rgba(255,255,255,0.1);
-    border-radius: 10px;
-    padding: 15px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    padding: 16px 20px;
+    border: none;
 }
 
 .move-history h3 {
-    margin-bottom: 10px;
-    font-size: 1rem;
-    opacity: 0.8;
+    margin-bottom: 12px;
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: rgba(255, 255, 255, 0.6);
 }
 
 #history {
-    font-family: 'Monaco', 'Consolas', monospace;
-    font-size: 0.9rem;
-    max-height: 150px;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-size: 0.8rem;
+    max-height: 120px;
     overflow-y: auto;
-    line-height: 1.6;
+    line-height: 2;
+    color: rgba(255, 255, 255, 0.7);
 }
 
 #history span {
     display: inline-block;
     padding: 2px 8px;
     margin: 2px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s ease;
 }
 
-/* Status colors */
+#history span:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Status colors - visible on dark bg */
 .status-check #status {
-    color: #fbbf24;
+    color: #ffd700 !important;
 }
 
 .status-checkmate #status {
-    color: #ef4444;
+    color: #ff6b6b !important;
+    font-weight: 500;
 }
 
 .status-stalemate #status,
 .status-draw #status {
-    color: #a78bfa;
+    color: rgba(255, 255, 255, 0.6) !important;
 }
 
-/* King in check highlight */
+/* King in check - subtle wood-toned highlight */
 .square.in-check {
-    animation: check-flash 0.5s ease-in-out infinite;
-    background: rgba(239, 68, 68, 0.6) !important;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(160, 80, 30, 0.5) 0%,
+            rgba(140, 60, 20, 0.45) 50%,
+            rgba(160, 80, 30, 0.5) 100%
+        ) !important;
+    animation: check-pulse 0.8s ease-in-out infinite;
 }
 
-@keyframes check-flash {
-    0%, 100% { box-shadow: inset 0 0 20px rgba(239, 68, 68, 0.8); }
-    50% { box-shadow: inset 0 0 30px rgba(239, 68, 68, 1); }
+@keyframes check-pulse {
+    0%, 100% { box-shadow: inset 0 0 15px rgba(140, 70, 25, 0.5); }
+    50% { box-shadow: inset 0 0 25px rgba(160, 80, 30, 0.7); }
 }
 
-/* Check banner */
+/* Hint for single legal move in check - piece to move */
+.square.hint-from {
+    animation: hint-pulse 1s ease-in-out infinite;
+    box-shadow: inset 0 0 20px rgba(100, 200, 100, 0.6) !important;
+}
+
+.square.hint-from::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 3px solid rgba(100, 200, 100, 0.8);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Hint for single legal move in check - destination */
+.square.hint-to::after {
+    content: '→';
+    position: absolute;
+    font-size: 24px;
+    color: rgba(100, 200, 100, 0.9);
+    text-shadow: 0 0 10px rgba(100, 200, 100, 0.5);
+    z-index: 10;
+    animation: hint-arrow 1s ease-in-out infinite;
+}
+
+@keyframes hint-pulse {
+    0%, 100% { box-shadow: inset 0 0 15px rgba(100, 200, 100, 0.4); }
+    50% { box-shadow: inset 0 0 30px rgba(100, 200, 100, 0.7); }
+}
+
+@keyframes hint-arrow {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Check banner - minimal */
 .check-banner {
     position: fixed;
-    top: 20px;
+    top: 30px;
     left: 50%;
     transform: translateX(-50%);
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    color: white;
-    padding: 12px 30px;
-    border-radius: 8px;
-    font-size: 1.2rem;
-    font-weight: bold;
+    background: #333;
+    color: #fff;
+    padding: 10px 30px;
+    border-radius: 0;
+    font-size: 0.75rem;
+    font-weight: 400;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.5);
+    letter-spacing: 0.2em;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     z-index: 100;
-    animation: banner-pop 0.3s ease-out;
+    animation: fade-in 0.2s ease;
 }
 
-@keyframes banner-pop {
-    0% { transform: translateX(-50%) scale(0.8); opacity: 0; }
-    100% { transform: translateX(-50%) scale(1); opacity: 1; }
+@keyframes fade-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* Game over modal */
+/* Game over modal - wood themed */
 .modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -275,54 +416,52 @@ button:active {
     animation: fade-in 0.3s ease;
 }
 
-@keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
 .modal {
-    background: linear-gradient(135deg, #1e293b, #0f172a);
-    border-radius: 16px;
-    padding: 40px;
+    background: url('wood-border.jpg');
+    background-size: cover;
+    background-position: center;
+    border-radius: 8px;
+    padding: 60px 80px;
     text-align: center;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    animation: modal-slide 0.3s ease-out;
-}
-
-@keyframes modal-slide {
-    from { transform: translateY(-30px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
 }
 
 .modal h2 {
-    font-size: 2rem;
-    margin-bottom: 10px;
+    font-size: 1.4rem;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .modal .winner {
-    font-size: 1.2rem;
-    opacity: 0.8;
-    margin-bottom: 25px;
+    font-size: 1rem;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 40px;
 }
 
 .modal button {
-    margin: 5px;
+    margin: 8px;
 }
 
-/* Promotion modal */
+/* Promotion modal - wood themed */
 .promotion-modal {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: linear-gradient(135deg, #1e293b, #0f172a);
-    border-radius: 12px;
-    padding: 20px;
+    background: url('wood-border.jpg');
+    background-size: cover;
+    background-position: center;
+    border-radius: 8px;
+    padding: 24px;
     display: flex;
-    gap: 10px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    gap: 12px;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.6);
     z-index: 150;
-    border: 2px solid #3b82f6;
 }
 
 .promotion-option {
@@ -332,73 +471,123 @@ button:active {
     align-items: center;
     justify-content: center;
     font-size: 40px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px solid transparent;
-    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .promotion-option:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: #3b82f6;
-    transform: scale(1.1);
+    background: rgba(0, 0, 0, 0.5);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: scale(1.05);
 }
 
-/* Replay controls - hidden at bottom */
+/* Replay controls - wood themed */
 .replay-controls {
     display: flex;
     justify-content: center;
     gap: 8px;
     margin-top: 40px;
     padding-top: 20px;
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
     opacity: 0.4;
+    transition: opacity 0.3s ease;
 }
 
 .replay-controls:hover {
-    opacity: 1;
+    opacity: 0.9;
 }
 
 .replay-controls button {
     padding: 6px 12px;
-    font-size: 0.9rem;
-    min-width: 35px;
-    background: rgba(255,255,255,0.1);
+    font-size: 0.75rem;
+    min-width: 32px;
 }
 
 .replay-controls button:disabled {
-    opacity: 0.3;
+    opacity: 0.2;
     cursor: not-allowed;
 }
 
 .replay-controls .live-indicator {
-    background: #22c55e;
+    background: rgba(100, 200, 100, 0.3);
+    border-color: rgba(100, 200, 100, 0.6);
+    color: #90ee90;
 }
 
-/* Undo request UI */
+/* Undo panel - wood themed */
 .undo-panel {
-    background: rgba(251, 191, 36, 0.2);
-    border: 1px solid #fbbf24;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 20px;
+    background: rgba(180, 130, 70, 0.3);
+    border: 1px solid rgba(255, 200, 100, 0.4);
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 30px;
     text-align: center;
 }
 
 .undo-panel p {
-    margin-bottom: 10px;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .undo-panel button {
-    margin: 0 5px;
+    margin: 0 8px;
     padding: 8px 20px;
 }
 
 .undo-panel .accept-btn {
-    background: #22c55e;
+    background: rgba(100, 180, 100, 0.4);
+    border-color: rgba(100, 200, 100, 0.6);
+    color: #90ee90;
+}
+
+.undo-panel .accept-btn:hover {
+    background: rgba(100, 180, 100, 0.6);
+    color: #fff;
 }
 
 .undo-panel .reject-btn {
-    background: #ef4444;
+    background: rgba(180, 80, 80, 0.4);
+    border-color: rgba(200, 100, 100, 0.6);
+    color: #ffaaaa;
+}
+
+.undo-panel .reject-btn:hover {
+    background: rgba(180, 80, 80, 0.6);
+    color: #fff;
+}
+
+/* Scrollbar styling - minimal */
+#history::-webkit-scrollbar {
+    width: 4px;
+}
+
+#history::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#history::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 0;
+}
+
+#history::-webkit-scrollbar-thumb:hover {
+    background: #ccc;
+}
+
+/* Focus states - minimal */
+button:focus {
+    outline: 1px solid #999;
+    outline-offset: 2px;
+}
+
+/* Active move in history */
+#history span[style*="background"] {
+    background: #f0f0f0 !important;
+    color: #333;
 }

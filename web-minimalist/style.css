@@ -1,0 +1,493 @@
+/* Minimalist Chess UI - Clean, Simple, Beautiful */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
+    background: #fafafa;
+    min-height: 100vh;
+    color: #333;
+    font-weight: 300;
+    letter-spacing: 0.02em;
+}
+
+.container {
+    max-width: 540px;
+    margin: 0 auto;
+    padding: 60px 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 40px;
+    font-size: 1.5rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #888;
+}
+
+/* Game info - minimal header */
+.game-info {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-bottom: 40px;
+    padding: 0;
+    background: transparent;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #999;
+}
+
+.game-info span {
+    font-weight: 400;
+    color: #333;
+    text-transform: capitalize;
+}
+
+#turn {
+    color: #333 !important;
+}
+
+#status {
+    color: #666 !important;
+}
+
+/* Board container */
+.board-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 40px;
+    position: relative;
+}
+
+/* The chess board */
+.board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: min(480px, 88vw);
+    height: min(480px, 88vw);
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.04);
+    background: #fff;
+}
+
+/* Board squares */
+.square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: min(48px, 9.5vw);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+    position: relative;
+}
+
+/* Piece colors - subtle contrast */
+.square.white-piece {
+    color: #1a1a1a;
+    text-shadow: none;
+}
+
+.square.black-piece {
+    color: #555;
+    text-shadow: none;
+}
+
+/* Light squares - pure white */
+.square.light {
+    background: #ffffff;
+}
+
+/* Dark squares - very subtle gray */
+.square.dark {
+    background: #f0f0f0;
+}
+
+/* Hover state - very subtle */
+.square:hover {
+    background: #e8e8e8;
+}
+
+.square.light:hover {
+    background: #f5f5f5;
+}
+
+/* Selected square - minimal highlight */
+.square.selected {
+    background: #e0e0e0 !important;
+}
+
+/* Legal move indicator - subtle dot */
+.square.legal-move {
+    position: relative;
+}
+
+.square.legal-move::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 50%;
+}
+
+/* Legal capture - subtle ring */
+.square.legal-capture {
+    position: relative;
+}
+
+.square.legal-capture::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+    border-radius: 50%;
+    z-index: 1;
+}
+
+.square.legal-capture::after {
+    display: none;
+}
+
+/* Last move highlight - very subtle */
+.square.last-move {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+
+.square.last-move.dark {
+    background: #e8e8e8 !important;
+}
+
+/* Controls - minimal buttons */
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 40px;
+}
+
+button {
+    padding: 10px 24px;
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #666;
+    background: transparent;
+    border: 1px solid #ddd;
+    border-radius: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+button:hover {
+    color: #333;
+    border-color: #999;
+    background: transparent;
+    transform: none;
+    box-shadow: none;
+}
+
+button:active {
+    background: #f5f5f5;
+}
+
+/* Move history - clean list */
+.move-history {
+    background: transparent;
+    border-radius: 0;
+    padding: 20px 0;
+    border-top: 1px solid #eee;
+}
+
+.move-history h3 {
+    margin-bottom: 16px;
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #999;
+}
+
+#history {
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-size: 0.8rem;
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 2;
+    color: #666;
+}
+
+#history span {
+    display: inline-block;
+    padding: 2px 8px;
+    margin: 2px;
+    background: transparent;
+    border-radius: 0;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+#history span:hover {
+    color: #333;
+}
+
+/* Status colors - muted */
+.status-check #status {
+    color: #666 !important;
+}
+
+.status-checkmate #status {
+    color: #333 !important;
+}
+
+.status-stalemate #status,
+.status-draw #status {
+    color: #999 !important;
+}
+
+/* King in check - subtle highlight */
+.square.in-check {
+    background: rgba(200, 0, 0, 0.08) !important;
+    animation: none;
+}
+
+/* Check banner - minimal */
+.check-banner {
+    position: fixed;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 10px 30px;
+    border-radius: 0;
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Game over modal - clean and simple */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    animation: fade-in 0.3s ease;
+}
+
+.modal {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 0;
+    padding: 60px 80px;
+    text-align: center;
+    box-shadow: 0 10px 60px rgba(0, 0, 0, 0.08);
+}
+
+.modal h2 {
+    font-size: 1.2rem;
+    font-weight: 300;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.modal .winner {
+    font-size: 0.9rem;
+    font-weight: 300;
+    color: #888;
+    margin-bottom: 40px;
+}
+
+.modal button {
+    margin: 8px;
+}
+
+/* Promotion modal - minimal */
+.promotion-modal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 0;
+    padding: 24px;
+    display: flex;
+    gap: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    z-index: 150;
+}
+
+.promotion-option {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    background: #fafafa;
+    border: 1px solid #e0e0e0;
+    border-radius: 0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: #333;
+}
+
+.promotion-option:hover {
+    background: #f0f0f0;
+    border-color: #ccc;
+    transform: none;
+}
+
+/* Replay controls - hidden, minimal */
+.replay-controls {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    opacity: 0.3;
+    transition: opacity 0.3s ease;
+}
+
+.replay-controls:hover {
+    opacity: 0.7;
+}
+
+.replay-controls button {
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    min-width: 32px;
+    background: transparent;
+    border: 1px solid #ddd;
+    color: #888;
+}
+
+.replay-controls button:hover {
+    border-color: #aaa;
+    color: #555;
+}
+
+.replay-controls button:disabled {
+    opacity: 0.2;
+    cursor: not-allowed;
+}
+
+.replay-controls .live-indicator {
+    background: transparent;
+    color: #333;
+    border-color: #333;
+}
+
+/* Undo panel - subtle */
+.undo-panel {
+    background: #fafafa;
+    border: 1px solid #e0e0e0;
+    border-radius: 0;
+    padding: 20px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.undo-panel p {
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.undo-panel button {
+    margin: 0 8px;
+    padding: 8px 20px;
+}
+
+.undo-panel .accept-btn {
+    background: transparent;
+    border-color: #333;
+    color: #333;
+}
+
+.undo-panel .accept-btn:hover {
+    background: #333;
+    color: #fff;
+}
+
+.undo-panel .reject-btn {
+    background: transparent;
+    border-color: #ccc;
+    color: #888;
+}
+
+.undo-panel .reject-btn:hover {
+    border-color: #999;
+    color: #555;
+}
+
+/* Scrollbar styling - minimal */
+#history::-webkit-scrollbar {
+    width: 4px;
+}
+
+#history::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#history::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 0;
+}
+
+#history::-webkit-scrollbar-thumb:hover {
+    background: #ccc;
+}
+
+/* Remove all unnecessary animations */
+@keyframes capture-pulse {
+    0%, 100% { box-shadow: none; }
+}
+
+@keyframes check-flash {
+    0%, 100% { box-shadow: none; }
+}
+
+/* Focus states - minimal */
+button:focus {
+    outline: 1px solid #999;
+    outline-offset: 2px;
+}
+
+/* Active move in history */
+#history span[style*="background"] {
+    background: #f0f0f0 !important;
+    color: #333;
+}
