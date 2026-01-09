@@ -15,7 +15,7 @@ func main() {
 	mux.HandleFunc("/games/", gameHandler)
 
 	// Serve static files from web directory
-	fs := http.FileServer(http.Dir("web"))
+	fs := http.FileServer(http.Dir("../web"))
 	mux.Handle("/", fs)
 
 	addr := ":8080"
