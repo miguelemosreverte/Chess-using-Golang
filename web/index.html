@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chess</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="book.css">
 </head>
 <body>
     <div class="container">
@@ -32,16 +33,25 @@
     <!-- Check banner (shown briefly when in check) -->
     <div id="check-banner" class="check-banner" style="display: none;">CHECK!</div>
 
-
-    <!-- Dev controls legend -->
-    <div class="dev-legend">
-        <div><b>Dev Mode</b> (Tab to exit)</div>
-        <div>← → Background</div>
-        <div>Drag corners to adjust</div>
-        <div>B Border toggle</div>
-        <div>0 Reset corners</div>
-        <div>Enter Save config</div>
+    <!-- Chapter selection menu -->
+    <div id="chapter-menu" class="chapter-menu" style="display: none;">
+        <div class="chapter-menu-content">
+            <h2>Select Chapter</h2>
+            <div id="chapter-list" class="chapter-list">
+                <!-- Chapters will be populated by JavaScript -->
+            </div>
+            <button class="chapter-menu-close" onclick="closeChapterMenu()">Cancel</button>
+        </div>
     </div>
+
+    <!-- Chapter menu button (bottom-left corner) -->
+    <button id="chapter-menu-btn" class="chapter-menu-btn" onclick="openChapterMenu()">
+        <span class="chapter-icon">&#9776;</span>
+        <span id="current-chapter-name">Basic Household</span>
+    </button>
+
+    <!-- Dev mode legend (content set dynamically by JS) -->
+    <div class="dev-legend"></div>
 
     <!-- Chat panel -->
     <div class="chat-panel">
@@ -52,6 +62,9 @@
         </div>
     </div>
 
+    <script src="chapter-parser.js"></script>
+    <script src="film-burn-transition.js"></script>
+    <script src="book.js"></script>
     <script src="board-and-background-image-sync.js"></script>
     <script src="app.js"></script>
 </body>

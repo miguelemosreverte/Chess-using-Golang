@@ -1,0 +1,291 @@
+/* ============================================
+   PHOTO BOOK - Chapter & Image Selector
+   ============================================ */
+
+.book-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.book-container {
+    perspective: 2000px;
+    width: 80vw;
+    max-width: 1000px;
+    height: 70vh;
+    max-height: 700px;
+}
+
+.book {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+}
+
+/* Single page */
+.page {
+    position: absolute;
+    width: 50%;
+    height: 100%;
+    right: 0;
+    transform-origin: left center;
+    transform-style: preserve-3d;
+    transition: transform 0.8s ease-in-out;
+    cursor: pointer;
+}
+
+.page.flipped {
+    transform: rotateY(-180deg);
+}
+
+/* Front and back of page */
+.page-front,
+.page-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    border-radius: 0 8px 8px 0;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.page-front {
+    background: #f5f0e6;
+}
+
+.page-back {
+    background: #f5f0e6;
+    transform: rotateY(180deg);
+}
+
+/* Left side (static) */
+.book-left {
+    position: absolute;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: #f5f0e6;
+    border-radius: 8px 0 0 8px;
+    box-shadow: inset -10px 0 30px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* Page content */
+.page-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+/* Chapter title page */
+.chapter-page {
+    text-align: center;
+}
+
+.chapter-page .chapter-image {
+    width: 90%;
+    height: 60%;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    margin-bottom: 20px;
+}
+
+.chapter-page h2 {
+    font-family: 'Georgia', serif;
+    font-size: 1.8em;
+    color: #3a3226;
+    margin: 0 0 10px 0;
+}
+
+.chapter-page p {
+    font-family: 'Georgia', serif;
+    font-style: italic;
+    color: #6b5d4d;
+    font-size: 1em;
+    margin: 0;
+}
+
+/* Photo album page (grid of chat images) */
+.album-page {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 15px;
+    width: 100%;
+    height: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.album-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.album-photo:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Navigation hints */
+.book-nav {
+    position: absolute;
+    bottom: -50px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-family: 'Georgia', serif;
+    font-size: 0.9em;
+    opacity: 0.7;
+}
+
+.book-nav span {
+    margin: 0 20px;
+}
+
+/* Page corner fold effect */
+.page-front::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.05) 50%);
+}
+
+/* Book spine shadow */
+.book::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 10px;
+    height: 100%;
+    background: linear-gradient(to right, rgba(0,0,0,0.2), transparent);
+    transform: translateX(-5px);
+    z-index: 100;
+}
+
+/* Close button */
+.book-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    transition: background 0.2s;
+    z-index: 1001;
+}
+
+.book-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Page number */
+.page-number {
+    position: absolute;
+    bottom: 15px;
+    font-family: 'Georgia', serif;
+    font-size: 0.8em;
+    color: #8b7d6b;
+}
+
+.page-front .page-number {
+    right: 20px;
+}
+
+.page-back .page-number {
+    left: 20px;
+}
+
+/* Album photo wrapper (preview only, not clickable) */
+.album-photo-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+/* Album label */
+.album-label {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Georgia', serif;
+    font-size: 0.8em;
+    color: #6b5d4d;
+    font-style: italic;
+}
+
+/* Chapter click hint */
+.chapter-hint {
+    margin-top: 15px;
+    font-family: 'Georgia', serif;
+    font-size: 0.9em;
+    color: #8b7d6b;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.chapter-clickable {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.chapter-clickable:hover {
+    transform: scale(1.02);
+}
+
+.chapter-clickable:hover .chapter-hint {
+    opacity: 1;
+}
+
+.chapter-clickable:hover .chapter-image {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Cinematic transition layer */
+.cinematic-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: none;
+    pointer-events: none;
+    background: #000;
+}
+
+.zoom-image {
+    position: fixed;
+    object-fit: cover;
+    will-change: transform, width, height, left, top;
+}
+
+.board-reveal {
+    position: fixed;
+    object-fit: cover;
+    will-change: opacity;
+}

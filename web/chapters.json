@@ -1,0 +1,48 @@
+{
+  "chapters": [
+    {
+      "id": "basic-household",
+      "name": "Basic Household",
+      "description": "Home chess setup with coffee and cozy atmosphere",
+      "thumbnail": "chapters/basic-household/board/bg-01.png",
+      "boardImages": [
+        { "file": "bg-01.png", "calibrated": true },
+        { "file": "bg-02.png", "calibrated": true },
+        { "file": "bg-03.png", "calibrated": true },
+        { "file": "bg-04.png", "calibrated": true },
+        { "file": "bg-05.png", "calibrated": true },
+        { "file": "bg-06.png", "calibrated": true },
+        { "file": "bg-07.png", "calibrated": true },
+        { "file": "bg-08.png", "calibrated": true },
+        { "file": "bg-09.png", "calibrated": true },
+        { "file": "bg-10.png", "calibrated": true },
+        { "file": "bg-11.png", "calibrated": true }
+      ],
+      "chatImages": [],
+      "defaultChatImage": null
+    },
+    {
+      "id": "greek-beach",
+      "name": "Greek Beach",
+      "description": "Mediterranean coastal chess - sun, sea, and strategy",
+      "thumbnail": "chapters/greek-beach/thumb/beach-chess-01.png",
+      "boardImages": [
+        { "file": "cafe-terrace-02.png", "calibrated": true },
+        { "file": "cafe-terrace-03.png", "calibrated": true },
+        { "file": "cafe-terrace-04.png", "calibrated": true },
+        { "file": "beach-sand-02.png", "calibrated": false },
+        { "file": "beach-sand-03.png", "calibrated": false },
+        { "file": "beach-sand-04.png", "calibrated": false }
+      ],
+      "chatImages": [],
+      "defaultChatImage": null
+    }
+  ],
+  "defaultChapter": "basic-household",
+  "globalAssets": {
+    "woodTexture": "wood-bg.jpg",
+    "woodBorder": "wood-border.jpg",
+    "woodLight": "wood-light.jpg",
+    "woodDark": "wood-dark.jpg"
+  }
+}

@@ -1,29 +1,94 @@
-// Chess UI Application
-// Board/background sync is in board-and-background-image-sync.js
+/**
+ * Chess UI Application
+ * ====================
+ *
+ * Main application logic for the chess game UI. Handles:
+ * - Game state management and API communication
+ * - Board rendering and piece interaction
+ * - Move validation and submission
+ * - Special moves: promotion, castling, en passant
+ * - Undo request/accept/reject flow
+ * - Move history replay navigation
+ * - Real-time chat between players
+ *
+ * Related files:
+ * - board-and-background-image-sync.js: Perspective transform and background alignment
+ * - style.css: All visual styling
+ * - index.html: DOM structure
+ */
+
+/* =============================================================================
+   CONSTANTS
+   ============================================================================= */
 
 const API_BASE = '/api';
 
-// Unicode chess pieces
+/** Unicode symbols for chess pieces, indexed by color and piece type */
 const PIECES = {
     white: { king: '♔', queen: '♕', rook: '♖', bishop: '♗', knight: '♘', pawn: '♙' },
     black: { king: '♚', queen: '♛', rook: '♜', bishop: '♝', knight: '♞', pawn: '♟' }
 };
 
-// Application state
-let gameId = null;
-let gameState = null;
-let selectedSquare = null;
-let legalMoves = [];
-let pendingPromotion = null; // { from, to } when awaiting promotion choice
-let replayIndex = -1; // -1 means live view, >= 0 means viewing history
-let previousStatus = null; // Track status changes for animations
-let singleMoveHint = null; // { from, to } when in check with only one legal move
-let lastMoveCount = 0; // Track moves for polling
-let chatMessages = []; // Local cache of chat messages
-let playerId = null; // Unique player ID for this session
+/* =============================================================================
+   APPLICATION STATE
+   ============================================================================= */
 
-// Initialize the app
+/** Current game ID from URL path */
+let gameId = null;
+
+/** Full game state from server (board, turn, status, moveHistory, etc.) */
+let gameState = null;
+
+/** Currently selected square position (e.g., "e4") or null */
+let selectedSquare = null;
+
+/** Array of legal moves for the selected piece [{from, to}, ...] */
+let legalMoves = [];
+
+/** Pending promotion move {from, to} while waiting for piece selection, or null */
+let pendingPromotion = null;
+
+/** Replay navigation index: -1 = live view, >= 0 = viewing historical position */
+let replayIndex = -1;
+
+/** Previous game status, used to detect status changes for animations */
+let previousStatus = null;
+
+/** Move count at last poll, used to detect new moves from opponent */
+let lastMoveCount = 0;
+
+/** Local cache of chat messages for this game */
+let chatMessages = [];
+
+/** Unique player ID for this browser tab (stored in sessionStorage) */
+let playerId = null;
+
+/**
+ * The color this player is assigned to (stored in sessionStorage per game).
+ * Null until the player makes their first move, then locked to that color.
+ * In debug play mode (devModeIndex === 2), this restriction is bypassed.
+ */
+let myColor = null;
+
+/* =============================================================================
+   INITIALIZATION
+   ============================================================================= */
+
+/**
+ * Initialize the application on page load.
+ * Sets up player ID, loads game state, renders board, and starts polling.
+ */
 async function init() {
+    // Get game ID from URL path
+    const path = window.location.pathname;
+    gameId = path.substring(1); // Remove leading slash
+
+    // If no game ID (home page), show the book selector
+    if (!gameId || gameId === '') {
+        openBook();
+        return;
+    }
+
     // Generate unique player ID for this tab session
     // Use sessionStorage so each tab gets its own ID (important for same-browser testing)
     playerId = sessionStorage.getItem('playerId');
@@ -32,9 +97,8 @@ async function init() {
         sessionStorage.setItem('playerId', playerId);
     }
 
-    // Get game ID from URL path
-    const path = window.location.pathname;
-    gameId = path.substring(1); // Remove leading slash
+    // Load player color for this game (if previously set)
+    myColor = sessionStorage.getItem(`myColor_${gameId}`) || null;
 
     renderBoard();
     setupPromotionModal();
@@ -61,7 +125,14 @@ async function init() {
     setInterval(pollChat, 1000);
 }
 
-// Load existing chat messages from server
+/* =============================================================================
+   GAME STATE & POLLING
+   ============================================================================= */
+
+/**
+ * Load existing chat messages from server.
+ * Called once during initialization to populate chat history.
+ */
 async function loadChat() {
     if (!gameId) return;
     try {
@@ -78,24 +149,11 @@ async function loadChat() {
         console.error('Failed to load chat:', error);
     }
 }
-// Toggle menu visibility on click outside board (disabled in dev mode)
-function setupMenuToggle() {
-    const board = document.getElementById('board');
-    document.addEventListener('click', (e) => {
-        // Skip if in dev mode
-        if (devMode) return;
 
-        if (board.contains(e.target)) return;
-        if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) return;
-        if (document.body.classList.contains('menu-visible')) {
-            if (e.target.closest('button') || e.target.closest('.undo-panel') ||
-                e.target.closest('.chat-panel')) return;
-        }
-        document.body.classList.toggle('menu-visible');
-    });
-}
-
-// Load game state from server
+/**
+ * Load game state from server.
+ * Fetches the full game state and resets local UI state.
+ */
 async function loadGame() {
     try {
         const response = await fetch(`${API_BASE}/games/${gameId}`);
@@ -110,14 +168,17 @@ async function loadGame() {
         pendingPromotion = null;
         replayIndex = -1;
         previousStatus = null;
-        singleMoveHint = null;
         updateUI();
     } catch (error) {
         console.error('Failed to load game:', error);
     }
 }
 
-// Poll for game state updates (for multiplayer sync)
+/**
+ * Poll for game state updates (for multiplayer sync).
+ * Runs on 1-second interval to detect opponent moves.
+ * Triggers check banner animation and auto-restart on game over.
+ */
 async function pollGameState() {
     if (!gameId) return;
     try {
@@ -150,7 +211,10 @@ async function pollGameState() {
     }
 }
 
-// Poll for chat updates
+/**
+ * Poll for new chat messages from opponent.
+ * Runs on 1-second interval to sync chat in real-time.
+ */
 async function pollChat() {
     if (!gameId) return;
     try {
@@ -172,20 +236,40 @@ async function pollChat() {
     }
 }
 
-// Create a new game (redirect to root)
+/* =============================================================================
+   NAVIGATION & CONTROLS
+   ============================================================================= */
+
+/**
+ * Create a new game by redirecting to root URL.
+ * The server will generate a new game ID and redirect.
+ */
 function newGame() {
     window.location.href = '/';
 }
 
-// Cycle to the next background image
+/**
+ * Cycle to the next background image.
+ * Saves preference to localStorage and reloads config.
+ */
 function cycleBackground() {
-    currentBgIndex = (currentBgIndex % (BACKGROUNDS.length - 1)) + 1; // Skip wood-bg.jpg (index 0)
-    localStorage.setItem('lastBgIndex', currentBgIndex.toString());
-    loadBgConfig();
-    applyBackground();
+    if (currentChapter && currentChapter.boardImages.length > 0) {
+        currentBoardImageIndex = (currentBoardImageIndex + 1) % currentChapter.boardImages.length;
+        localStorage.setItem(`lastBgIndex_${currentChapter.id}`, currentBoardImageIndex.toString());
+        loadBgConfig();
+        applyBackground();
+    }
 }
 
-// Render the chess board
+/* =============================================================================
+   BOARD RENDERING
+   ============================================================================= */
+
+/**
+ * Render the 8x8 chess board grid.
+ * Creates 64 square divs with click handlers and position data attributes.
+ * Called once during initialization.
+ */
 function renderBoard() {
     const board = document.getElementById('board');
     board.innerHTML = '';
@@ -206,7 +290,14 @@ function renderBoard() {
     }
 }
 
-// Setup promotion modal click handlers
+/* =============================================================================
+   PAWN PROMOTION
+   ============================================================================= */
+
+/**
+ * Setup click handlers for promotion piece selection.
+ * Called once during initialization.
+ */
 function setupPromotionModal() {
     const options = document.querySelectorAll('.promotion-option');
     options.forEach(option => {
@@ -217,7 +308,16 @@ function setupPromotionModal() {
     });
 }
 
-// Handle square click
+/* =============================================================================
+   SQUARE INTERACTION & MOVES
+   ============================================================================= */
+
+/**
+ * Handle click on a board square.
+ * Selects pieces, shows legal moves, or executes moves.
+ *
+ * @param {string} pos - Square position in algebraic notation (e.g., "e4")
+ */
 async function onSquareClick(pos) {
     // Ignore clicks during promotion selection
     if (pendingPromotion) return;
@@ -227,6 +327,13 @@ async function onSquareClick(pos) {
 
     if (!gameState || gameState.status === 'checkmate' || gameState.status === 'stalemate') {
         return;
+    }
+
+    // Block moves if it's not your color's turn (unless in debug play mode)
+    // devModeIndex is defined in board-and-background-image-sync.js
+    const isDebugPlayMode = typeof devModeIndex !== 'undefined' && devModeIndex === 2;
+    if (myColor && myColor !== gameState.turn && !isDebugPlayMode) {
+        return; // Not your turn
     }
 
     // If clicking on a legal move destination, make the move
@@ -263,7 +370,12 @@ async function onSquareClick(pos) {
     updateUI();
 }
 
-// Show promotion modal
+/**
+ * Show the promotion modal with piece options.
+ *
+ * @param {Object} move - The move {from, to} that triggered promotion
+ * @param {string} color - "white" or "black" for piece icons
+ */
 function showPromotionModal(move, color) {
     pendingPromotion = move;
     const modal = document.getElementById('promotion-modal');
@@ -277,13 +389,17 @@ function showPromotionModal(move, color) {
     modal.style.display = 'flex';
 }
 
-// Hide promotion modal
+/** Hide the promotion modal and clear pending state. */
 function hidePromotionModal() {
     document.getElementById('promotion-modal').style.display = 'none';
     pendingPromotion = null;
 }
 
-// Complete promotion with selected piece
+/**
+ * Complete a promotion move with the selected piece type.
+ *
+ * @param {string} pieceType - One of: "queen", "rook", "bishop", "knight"
+ */
 async function completePromotion(pieceType) {
     if (!pendingPromotion) return;
 
@@ -292,7 +408,12 @@ async function completePromotion(pieceType) {
     await makeMove(from, to, pieceType);
 }
 
-// Fetch legal moves for a piece
+/**
+ * Fetch legal moves for a piece at the given position.
+ * Updates the legalMoves state variable.
+ *
+ * @param {string} pos - Square position in algebraic notation
+ */
 async function fetchLegalMoves(pos) {
     try {
         const response = await fetch(`${API_BASE}/games/${gameId}/moves?from=${pos}`);
@@ -304,38 +425,14 @@ async function fetchLegalMoves(pos) {
     }
 }
 
-// Fetch all legal moves and check for single move hint (when in check)
-async function checkForSingleMoveHint() {
-    singleMoveHint = null;
-
-    if (gameState.status !== 'check') return;
-
-    try {
-        // Get all pieces of current player and their legal moves
-        const allMoves = [];
-        const board = gameState.board;
-
-        for (const pos of Object.keys(board)) {
-            const piece = board[pos];
-            if (piece && piece.color === gameState.turn) {
-                const response = await fetch(`${API_BASE}/games/${gameId}/moves?from=${pos}`);
-                const data = await response.json();
-                if (data.moves && data.moves.length > 0) {
-                    allMoves.push(...data.moves);
-                }
-            }
-        }
-
-        // If exactly one legal move exists, set the hint
-        if (allMoves.length === 1) {
-            singleMoveHint = { from: allMoves[0].from, to: allMoves[0].to };
-        }
-    } catch (error) {
-        console.error('Failed to check for single move hint:', error);
-    }
-}
-
-// Make a move
+/**
+ * Submit a move to the server.
+ * Handles promotion, check detection, and game over states.
+ *
+ * @param {string} from - Source square (e.g., "e2")
+ * @param {string} to - Destination square (e.g., "e4")
+ * @param {string|null} promotion - Promotion piece type or null
+ */
 async function makeMove(from, to, promotion = null) {
     try {
         const body = { from, to };
@@ -355,8 +452,19 @@ async function makeMove(from, to, promotion = null) {
             return;
         }
 
+        // The color that just moved is the current turn (before we update gameState)
+        const movedColor = gameState.turn;
+
         const oldStatus = gameState?.status;
         gameState = await response.json();
+
+        // Lock player to the color they just moved (first move determines your color)
+        // Only set if not already set and not in debug play mode
+        const isDebugPlayMode = typeof devModeIndex !== 'undefined' && devModeIndex === 2;
+        if (!myColor && !isDebugPlayMode) {
+            myColor = movedColor;
+            sessionStorage.setItem(`myColor_${gameId}`, myColor);
+        }
         selectedSquare = null;
         legalMoves = [];
         replayIndex = -1; // Return to live view
@@ -364,13 +472,6 @@ async function makeMove(from, to, promotion = null) {
         // Show check banner if newly in check
         if (gameState.status === 'check' && oldStatus !== 'check') {
             showCheckBanner();
-        }
-
-        // Check for single move hint when in check
-        if (gameState.status === 'check') {
-            await checkForSingleMoveHint();
-        } else {
-            singleMoveHint = null;
         }
 
         // Auto-restart on game over
@@ -384,7 +485,14 @@ async function makeMove(from, to, promotion = null) {
     }
 }
 
-// Show check banner briefly
+/* =============================================================================
+   UI FEEDBACK
+   ============================================================================= */
+
+/**
+ * Show the "CHECK!" banner briefly.
+ * Displays for 2 seconds then auto-hides.
+ */
 function showCheckBanner() {
     const banner = document.getElementById('check-banner');
     banner.style.display = 'block';
@@ -393,7 +501,14 @@ function showCheckBanner() {
     }, 2000);
 }
 
-// Undo functions
+/* =============================================================================
+   UNDO FUNCTIONS
+   ============================================================================= */
+
+/**
+ * Request to undo the last move.
+ * Sends request to server; opponent must accept/reject.
+ */
 async function requestUndo() {
     if (!gameId || gameState.moveHistory.length === 0) return;
 
@@ -413,6 +528,7 @@ async function requestUndo() {
     }
 }
 
+/** Accept the opponent's undo request. Reverts the last move. */
 async function acceptUndo() {
     if (!gameId) return;
 
@@ -431,6 +547,7 @@ async function acceptUndo() {
     }
 }
 
+/** Reject the opponent's undo request. Game continues unchanged. */
 async function rejectUndo() {
     if (!gameId) return;
 
@@ -448,13 +565,18 @@ async function rejectUndo() {
     }
 }
 
-// Replay functions
+/* =============================================================================
+   REPLAY NAVIGATION
+   ============================================================================= */
+
+/** Navigate to the first move in history (position after move 1). */
 function replayFirst() {
     if (gameState.moveHistory.length === 0) return;
     replayIndex = 0;
     updateUI();
 }
 
+/** Navigate to the previous move. If at live, go to last move. */
 function replayPrev() {
     if (replayIndex === -1) {
         replayIndex = gameState.moveHistory.length - 1;
@@ -464,6 +586,7 @@ function replayPrev() {
     updateUI();
 }
 
+/** Navigate to the next move. If at end, return to live view. */
 function replayNext() {
     if (replayIndex === -1) return;
     if (replayIndex < gameState.moveHistory.length - 1) {
@@ -474,17 +597,25 @@ function replayNext() {
     updateUI();
 }
 
+/** Navigate to the last move (same as live view). */
 function replayLast() {
     replayIndex = -1;
     updateUI();
 }
 
+/** Return to live view (current game position). */
 function replayLive() {
     replayIndex = -1;
     updateUI();
 }
 
-// Reconstruct board state at a given move index
+/**
+ * Reconstruct board state at a given move index.
+ * Replays all moves from initial position up to the specified index.
+ *
+ * @param {number} moveIndex - Index into moveHistory (-1 for initial position)
+ * @returns {Object} Board state as {position: {type, color}} mapping
+ */
 function getBoardAtMove(moveIndex) {
     // Start with initial board
     const initialBoard = {
@@ -569,7 +700,15 @@ function getBoardAtMove(moveIndex) {
     return board;
 }
 
-// Update the UI based on game state
+/* =============================================================================
+   UI UPDATES
+   ============================================================================= */
+
+/**
+ * Update the entire UI based on current game state.
+ * Renders pieces, highlights, selection, legal moves, check indicators,
+ * last move highlights, and undo panel visibility.
+ */
 function updateUI() {
     if (!gameState) return;
 
@@ -585,7 +724,7 @@ function updateUI() {
         const piece = displayBoard[pos];
 
         // Reset classes
-        square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece| hint-from| hint-to/g, '');
+        square.className = square.className.replace(/ selected| legal-move| legal-capture| last-move| in-check| white-piece| black-piece/g, '');
 
         // Set piece
         if (piece) {
@@ -616,16 +755,6 @@ function updateUI() {
             if (gameState.checkSquare === pos) {
                 square.classList.add('in-check');
             }
-
-            // Show single move hint when in check with only one legal move
-            if (singleMoveHint) {
-                if (pos === singleMoveHint.from) {
-                    square.classList.add('hint-from');
-                }
-                if (pos === singleMoveHint.to) {
-                    square.classList.add('hint-to');
-                }
-            }
         }
 
         // Highlight last move (works in both live and replay)
@@ -637,10 +766,8 @@ function updateUI() {
         }
     });
 
-    // Update container class for status styling (preserve menu-visible)
-    const menuVisible = document.body.classList.contains('menu-visible');
+    // Update container class for status styling
     document.body.className = isLive ? `status-${gameState.status}` : '';
-    if (menuVisible) document.body.classList.add('menu-visible');
 
 
     // Update undo panel
@@ -655,23 +782,49 @@ function updateUI() {
 
 }
 
-// Go to a specific move in history
+/**
+ * Jump to a specific move in history.
+ *
+ * @param {number} index - Move index to display
+ */
 function goToMove(index) {
     replayIndex = index;
     updateUI();
 }
 
-// Convert file (0-7) and rank (0-7) to notation like "e4"
+/* =============================================================================
+   UTILITY FUNCTIONS
+   ============================================================================= */
+
+/**
+ * Convert file (0-7) and rank (0-7) to algebraic notation.
+ *
+ * @param {number} file - File index (0=a, 7=h)
+ * @param {number} rank - Rank index (0=1, 7=8)
+ * @returns {string} Position like "e4"
+ */
 function fileRankToNotation(file, rank) {
     return String.fromCharCode(97 + file) + (rank + 1);
 }
 
-// Capitalize first letter
+/**
+ * Capitalize the first letter of a string.
+ *
+ * @param {string} str - Input string
+ * @returns {string} String with first letter capitalized
+ */
 function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// Send chat message to server
+/* =============================================================================
+   CHAT FUNCTIONS
+   ============================================================================= */
+
+/**
+ * Send a chat message to the server.
+ * Adds message to UI immediately, then sends to server for opponent.
+ */
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const message = input.value.trim();
@@ -701,7 +854,12 @@ async function sendChat() {
     input.value = '';
 }
 
-// Add a chat message to the UI
+/**
+ * Add a chat message bubble to the UI.
+ *
+ * @param {string} message - Message text to display
+ * @param {string} type - "sent" for own messages, "received" for opponent
+ */
 function addChatMessageToUI(message, type) {
     const messagesContainer = document.getElementById('chat-messages');
     const messageEl = document.createElement('div');
@@ -713,5 +871,9 @@ function addChatMessageToUI(message, type) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// Start the app
+/* =============================================================================
+   ENTRY POINT
+   ============================================================================= */
+
+// Start the application
 init();

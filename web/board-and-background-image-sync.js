@@ -29,18 +29,26 @@
 // GLOBAL STATE
 // =============================================================================
 
-// Background images available for selection
-const BACKGROUNDS = [
-    'wood-bg.jpg',  // Index 0: wood texture (used as fallback layer)
-    'bg-01.png', 'bg-02.png', 'bg-03.png', 'bg-04.png',
-    'bg-05.png', 'bg-06.png', 'bg-07.png', 'bg-08.png',
-    'bg-09.png', 'bg-10.png', 'bg-11.png'
-];
+// Chapter and image management
+let chaptersData = null;          // Loaded from chapters.json
+let currentChapter = null;        // Current chapter object
+let currentChapterIndex = 0;      // Index in chapters array
+let currentBoardImageIndex = 0;   // Index in chapter's boardImages array
+
+// Legacy BACKGROUNDS array for backwards compatibility during transition
+const BACKGROUNDS = ['wood-bg.jpg'];  // Will be populated from chapters.json
 let currentBgIndex = 0;
 
-// Dev mode state for calibration
-let devMode = false;
+/**
+ * Debug mode index for cycling through modes with Tab:
+ * 0 = Normal (no debug UI)
+ * 1 = Calibration mode (corner dragging for background alignment)
+ * 2 = Debug play mode (can play both sides)
+ */
+let devModeIndex = 0;
+const DEV_MODE_COUNT = 3;
 let borderHidden = false;
+let checkerboardHidden = false;
 
 // Corner positions as percentages of viewport at calibration time
 // Order: [TopLeft, TopRight, BottomRight, BottomLeft]
@@ -57,6 +65,201 @@ let draggingHandle = null;
 // Cache for loaded image natural dimensions
 const imageDimensions = {};
 
+// =============================================================================
+// CHAT BACKGROUND STATE
+// =============================================================================
+
+// Parsed chapter graph (from chapter.md)
+let chapterGraph = null;
+
+// Current chat variation (e.g., "sunny", "cloudy")
+let currentChatVariation = null;
+
+// Current chat image sequence for rotation
+let chatSequence = [];
+let chatSequenceIndex = 0;
+
+// Chat rotation interval (30 seconds)
+const CHAT_ROTATION_INTERVAL = 30000;
+let chatRotationTimer = null;
+
+
+// =============================================================================
+// CHAPTER MANAGEMENT
+// =============================================================================
+
+/**
+ * Load chapters configuration from server.
+ * Sets up currentChapter to the default chapter.
+ */
+async function loadChaptersConfig() {
+    try {
+        const response = await fetch('/chapters.json');
+        if (response.ok) {
+            chaptersData = await response.json();
+
+            // Set default chapter
+            if (chaptersData.chapters && chaptersData.chapters.length > 0) {
+                const defaultId = chaptersData.defaultChapter || chaptersData.chapters[0].id;
+                const defaultIdx = chaptersData.chapters.findIndex(c => c.id === defaultId);
+                currentChapterIndex = defaultIdx >= 0 ? defaultIdx : 0;
+                currentChapter = chaptersData.chapters[currentChapterIndex];
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load chapters.json:', error);
+    }
+}
+
+/**
+ * Get the current board image filename.
+ */
+function getCurrentBoardImage() {
+    if (currentChapter && currentChapter.boardImages[currentBoardImageIndex]) {
+        return currentChapter.boardImages[currentBoardImageIndex].file;
+    }
+    return null;
+}
+
+/**
+ * Get the full path to the current board image.
+ */
+function getCurrentBoardImagePath() {
+    const img = getCurrentBoardImage();
+    if (img && currentChapter) {
+        return `chapters/${currentChapter.id}/board/${img}`;
+    }
+    return null;
+}
+
+/**
+ * Get the config path for the current board image.
+ */
+function getCurrentConfigPath() {
+    const img = getCurrentBoardImage();
+    if (img && currentChapter) {
+        return `${currentChapter.id}/${img}`;
+    }
+    return null;
+}
+
+// =============================================================================
+// CHAT BACKGROUND MANAGEMENT
+// =============================================================================
+
+/**
+ * Load and parse the chapter.md file for the current chapter.
+ * Falls back gracefully if no chapter.md exists.
+ */
+async function loadChapterMarkdown() {
+    if (!currentChapter) return;
+
+    try {
+        const response = await fetch(`chapters/${currentChapter.id}/chapter.md`);
+        if (response.ok) {
+            const content = await response.text();
+            chapterGraph = parseChapter(content);
+            console.log('Loaded chapter.md:', chapterGraph);
+        } else {
+            // No chapter.md, create empty graph
+            chapterGraph = { nodes: [], byType: { board: [], chat: [], thumb: [] }, byVariation: {}, sequences: {} };
+        }
+    } catch (e) {
+        console.log('No chapter.md found, using default');
+        chapterGraph = { nodes: [], byType: { board: [], chat: [], thumb: [] }, byVariation: {}, sequences: {} };
+    }
+}
+
+/**
+ * Initialize chat background with a random variation.
+ * Called after loading chapter markdown.
+ */
+function initChatBackground() {
+    if (!chapterGraph || Object.keys(chapterGraph.byVariation).length === 0) {
+        // No chat images defined
+        return;
+    }
+
+    // Pick a random variation
+    const variations = Object.keys(chapterGraph.byVariation);
+    currentChatVariation = variations[Math.floor(Math.random() * variations.length)];
+
+    // Get the sequence for this variation
+    chatSequence = getChatSequence(chapterGraph, currentChatVariation);
+    chatSequenceIndex = 0;
+
+    // Apply first image
+    applyChatBackground();
+
+    // Start rotation timer
+    startChatRotation();
+}
+
+/**
+ * Apply the current chat background image.
+ */
+function applyChatBackground() {
+    const chatPanel = document.querySelector('.chat-panel');
+    if (!chatPanel) return;
+
+    if (chatSequence.length === 0) {
+        chatPanel.style.backgroundImage = '';
+        chatPanel.classList.remove('has-background');
+        return;
+    }
+
+    const chat = chatSequence[chatSequenceIndex];
+    if (chat && currentChapter) {
+        const imagePath = `chapters/${currentChapter.id}/chat/${chat.file}`;
+        chatPanel.style.backgroundImage = `url('${imagePath}')`;
+        chatPanel.classList.add('has-background');
+    }
+}
+
+/**
+ * Advance to the next chat image in the sequence.
+ */
+function rotateChatBackground() {
+    if (chatSequence.length <= 1) return;
+
+    chatSequenceIndex = (chatSequenceIndex + 1) % chatSequence.length;
+    applyChatBackground();
+}
+
+/**
+ * Start the chat background rotation timer.
+ */
+function startChatRotation() {
+    stopChatRotation();
+    if (chatSequence.length > 1) {
+        chatRotationTimer = setInterval(rotateChatBackground, CHAT_ROTATION_INTERVAL);
+    }
+}
+
+/**
+ * Stop the chat background rotation timer.
+ */
+function stopChatRotation() {
+    if (chatRotationTimer) {
+        clearInterval(chatRotationTimer);
+        chatRotationTimer = null;
+    }
+}
+
+/**
+ * Change to a different chat variation.
+ * @param {string} variation - The variation name to switch to
+ */
+function setChatVariation(variation) {
+    if (!chapterGraph || !chapterGraph.byVariation[variation]) return;
+
+    currentChatVariation = variation;
+    chatSequence = getChatSequence(chapterGraph, currentChatVariation);
+    chatSequenceIndex = 0;
+
+    applyChatBackground();
+    startChatRotation();
+}
 
 // =============================================================================
 // INITIALIZATION
@@ -64,35 +267,57 @@ const imageDimensions = {};
 
 /**
  * Sets up the background system including:
+ * - Loading chapters.json for chapter/image organization
  * - Loading background from URL param or cycling through available images
  * - Loading calibration config from server
  * - Setting up keyboard controls for dev mode
  * - Setting up mouse drag handling for corner calibration
  */
 async function setupBackgroundToggle() {
+    // Load chapters configuration
+    await loadChaptersConfig();
+
     const params = new URLSearchParams(window.location.search);
 
-    // Load background from URL param (for shared links) or cycle to next
+    // Load chapter and background from URL params (for shared links)
+    const chapterParam = params.get('chapter');
     const bgParam = params.get('bg');
-    if (bgParam) {
-        const index = BACKGROUNDS.indexOf(bgParam);
-        if (index >= 0) {
-            currentBgIndex = index;
+
+    if (chapterParam && chaptersData) {
+        const chapterIdx = chaptersData.chapters.findIndex(c => c.id === chapterParam);
+        if (chapterIdx >= 0) {
+            currentChapterIndex = chapterIdx;
+            currentChapter = chaptersData.chapters[chapterIdx];
         }
-    } else {
-        // Cycle through backgrounds on each page load for variety
-        const lastBgIndex = parseInt(localStorage.getItem('lastBgIndex') || '-1');
-        currentBgIndex = (lastBgIndex + 1) % BACKGROUNDS.length;
-        // Skip wood-bg.jpg (index 0) as it's just a texture, not a chess photo
-        if (currentBgIndex === 0) currentBgIndex = 1;
     }
-    localStorage.setItem('lastBgIndex', currentBgIndex.toString());
+
+    if (bgParam && currentChapter) {
+        const imgIdx = currentChapter.boardImages.findIndex(img => img.file === bgParam);
+        if (imgIdx >= 0) {
+            currentBoardImageIndex = imgIdx;
+        }
+    } else if (currentChapter && currentChapter.boardImages.length > 0) {
+        // Cycle through backgrounds on each page load for variety
+        const lastIdx = parseInt(localStorage.getItem(`lastBgIndex_${currentChapter.id}`) || '-1');
+        currentBoardImageIndex = (lastIdx + 1) % currentChapter.boardImages.length;
+    }
+
+    if (currentChapter) {
+        localStorage.setItem(`lastBgIndex_${currentChapter.id}`, currentBoardImageIndex.toString());
+    }
+
+    // Update chapter name display
+    updateCurrentChapterName();
 
     // Update URL so sharing gives the same background
     updateBgUrl();
 
     // Load calibration config, then apply background
     await loadBgConfig();
+
+    // Load chapter markdown for chat backgrounds
+    await loadChapterMarkdown();
+    initChatBackground();
 
     // Wait for next frame to ensure board transform is rendered before measuring
     requestAnimationFrame(() => {
@@ -101,27 +326,42 @@ async function setupBackgroundToggle() {
 
     // Keyboard controls
     document.addEventListener('keydown', (e) => {
-        // Tab: toggle dev mode for calibration
+        // Escape: close chapter menu if open
+        if (e.key === 'Escape') {
+            const menu = document.getElementById('chapter-menu');
+            if (menu && menu.style.display !== 'none') {
+                closeChapterMenu();
+                return;
+            }
+        }
+
+        // Tab: cycle through debug modes (Normal → Calibration → Debug Play → Normal)
         if (e.key === 'Tab') {
             e.preventDefault();
-            devMode = !devMode;
-            toggleDevMode();
+            devModeIndex = (devModeIndex + 1) % DEV_MODE_COUNT;
+            updateDevModeUI();
             return;
         }
 
-        // All other controls only work in dev mode
-        if (!devMode) return;
+        // All other controls only work in calibration mode (mode 1)
+        if (devModeIndex !== 1) return;
 
         if (e.key === 'ArrowLeft') {
-            // Previous background image
-            currentBgIndex = (currentBgIndex - 1 + BACKGROUNDS.length) % BACKGROUNDS.length;
-            loadBgConfig();
-            applyBackground();
+            // Previous background image in current chapter
+            if (currentChapter && currentChapter.boardImages.length > 0) {
+                currentBoardImageIndex = (currentBoardImageIndex - 1 + currentChapter.boardImages.length) % currentChapter.boardImages.length;
+                loadBgConfig();
+                applyBackground();
+                updateCalibrationStatus();
+            }
         } else if (e.key === 'ArrowRight') {
-            // Next background image
-            currentBgIndex = (currentBgIndex + 1) % BACKGROUNDS.length;
-            loadBgConfig();
-            applyBackground();
+            // Next background image in current chapter
+            if (currentChapter && currentChapter.boardImages.length > 0) {
+                currentBoardImageIndex = (currentBoardImageIndex + 1) % currentChapter.boardImages.length;
+                loadBgConfig();
+                applyBackground();
+                updateCalibrationStatus();
+            }
         } else if (e.key === 'Enter') {
             // Save current calibration to server
             saveConfigToServer();
@@ -134,12 +374,16 @@ async function setupBackgroundToggle() {
             // Toggle board border visibility
             borderHidden = !borderHidden;
             applyBorder();
+        } else if (e.key === 'c' || e.key === 'C') {
+            // Toggle checkerboard pattern visibility
+            checkerboardHidden = !checkerboardHidden;
+            applyCheckerboard();
         }
     });
 
-    // Mouse drag handling for corner calibration
+    // Mouse drag handling for corner calibration (only in calibration mode)
     document.addEventListener('mousedown', (e) => {
-        if (!devMode) return;
+        if (devModeIndex !== 1) return;
         const handle = e.target.closest('.corner-handle');
         if (handle) {
             draggingHandle = handle;
@@ -165,23 +409,78 @@ async function setupBackgroundToggle() {
 }
 
 /**
- * Toggle dev mode UI - shows/hides corner handles and legend
+ * Update dev mode UI based on current devModeIndex.
+ * Mode 0: Normal - no debug UI
+ * Mode 1: Calibration - corner handles and calibration legend
+ * Mode 2: Debug Play - can play both sides, shows debug play legend
  */
-function toggleDevMode() {
+function updateDevModeUI() {
     const legend = document.querySelector('.dev-legend');
+    const isCalibrationMode = devModeIndex === 1;
+    const isDebugPlayMode = devModeIndex === 2;
+    const isAnyDevMode = devModeIndex !== 0;
+
+    // Update legend visibility and content
     if (legend) {
-        legend.style.display = devMode ? 'block' : 'none';
+        if (isCalibrationMode) {
+            legend.style.display = 'block';
+            legend.innerHTML = `
+                <div><b>Calibration Mode</b> (Tab to cycle)</div>
+                <div>Drag corners to align board with photo</div>
+                <div>← → Change background</div>
+                <div>B Toggle border</div>
+                <div>C Toggle checkerboard</div>
+                <div>0 Reset corners</div>
+                <div>Enter Save config</div>
+            `;
+        } else if (isDebugPlayMode) {
+            legend.style.display = 'block';
+            legend.innerHTML = `
+                <div><b>Debug Play Mode</b> (Tab to cycle)</div>
+                <div>You can play both sides</div>
+                <div>Useful for testing moves</div>
+            `;
+        } else {
+            legend.style.display = 'none';
+        }
     }
-    if (devMode) {
+
+    // Update body class and corner handles
+    if (isCalibrationMode) {
         document.body.classList.add('dev-mode');
         if (corners.length !== 4) {
             initDefaultCorners();
         }
         createCornerHandles();
+
+        // Auto-advance to first uncalibrated image
+        advanceToUncalibratedImage();
     } else {
         document.body.classList.remove('dev-mode');
         removeCornerHandles();
     }
+}
+
+/**
+ * Find and navigate to the first uncalibrated image in the current chapter.
+ * If all images are calibrated, stays on current image.
+ */
+async function advanceToUncalibratedImage() {
+    if (!currentChapter || !currentChapter.boardImages.length) {
+        updateCalibrationStatus();
+        return;
+    }
+
+    // Find first uncalibrated image
+    const uncalibratedIdx = currentChapter.boardImages.findIndex(img => !img.calibrated);
+
+    if (uncalibratedIdx >= 0 && uncalibratedIdx !== currentBoardImageIndex) {
+        currentBoardImageIndex = uncalibratedIdx;
+        await loadBgConfig();
+        applyBackground();
+    }
+
+    updateCalibrationStatus();
 }
 
 
@@ -211,19 +510,32 @@ function initDefaultCorners() {
  * Config includes: corners array, border visibility, and calibration viewport size.
  */
 async function loadBgConfig() {
-    const bgName = BACKGROUNDS[currentBgIndex];
+    const configPath = getCurrentConfigPath();
+    if (!configPath) {
+        // No chapter/image selected, reset to defaults
+        corners = [];
+        calibrationViewport = null;
+        borderHidden = false;
+        checkerboardHidden = false;
+        resetBoardTransform();
+        applyBorder();
+        applyCheckerboard();
+        return;
+    }
 
     try {
-        const response = await fetch('/config/' + bgName);
+        const response = await fetch('/config/' + configPath);
         if (response.ok) {
             const config = await response.json();
             corners = [...config.corners];
             borderHidden = config.border === false;
+            checkerboardHidden = config.checkerboard === false;
             calibrationViewport = config.calibrationViewport || null;
             applyCornerTransform();
             applyBorder();
+            applyCheckerboard();
 
-            if (devMode) {
+            if (devModeIndex === 1) {
                 updateCornerHandles();
             }
             return;
@@ -233,11 +545,13 @@ async function loadBgConfig() {
         corners = [];
         calibrationViewport = null;
         borderHidden = false;
+        checkerboardHidden = false;
         resetBoardTransform();
         applyBorder();
+        applyCheckerboard();
     }
 
-    if (devMode) {
+    if (devModeIndex === 1) {
         if (corners.length !== 4) {
             initDefaultCorners();
         }
@@ -250,10 +564,16 @@ async function loadBgConfig() {
  * Includes the current viewport size so coordinates can be scaled on other screens.
  */
 async function saveConfigToServer() {
-    const bgName = BACKGROUNDS[currentBgIndex];
+    const configPath = getCurrentConfigPath();
+    if (!configPath) {
+        updateLegendStatus('No image selected');
+        return;
+    }
+
     const config = {
         corners: corners,
         border: !borderHidden,
+        checkerboard: !checkerboardHidden,
         // IMPORTANT: Store viewport size at calibration time
         // This allows correct scaling on different screen sizes
         calibrationViewport: {
@@ -263,14 +583,20 @@ async function saveConfigToServer() {
     };
 
     try {
-        const response = await fetch('/config/' + bgName, {
+        const response = await fetch('/config/' + configPath, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
         });
 
         if (response.ok) {
+            // Mark image as calibrated in chapters data
+            if (currentChapter && currentChapter.boardImages[currentBoardImageIndex]) {
+                currentChapter.boardImages[currentBoardImageIndex].calibrated = true;
+            }
             updateLegendStatus('Saved!');
+            // Update status after a short delay
+            setTimeout(() => updateCalibrationStatus(), 1500);
         } else {
             updateLegendStatus('Save failed');
         }
@@ -633,24 +959,31 @@ function solveLinearSystem(A, b) {
  * 2. Wood texture behind - covers full viewport (prevents empty space)
  */
 function applyBackground() {
-    const bgUrl = BACKGROUNDS[currentBgIndex];
+    const bgPath = getCurrentBoardImagePath();
+    if (!bgPath) {
+        // No image selected, use wood texture
+        document.body.style.backgroundImage = `url('wood-bg.jpg')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        return;
+    }
 
     // Two-layer background: chess photo on top, wood texture behind
-    document.body.style.backgroundImage = `url('${bgUrl}'), url('wood-bg.jpg')`;
+    document.body.style.backgroundImage = `url('${bgPath}'), url('wood-bg.jpg')`;
     document.body.style.backgroundRepeat = 'no-repeat, no-repeat';
 
     if (corners.length === 4) {
         // Need image dimensions to calculate correct aspect ratio
-        if (imageDimensions[bgUrl]) {
-            applyBackgroundWithDimensions(imageDimensions[bgUrl]);
+        if (imageDimensions[bgPath]) {
+            applyBackgroundWithDimensions(imageDimensions[bgPath]);
         } else {
             // Load image to get its natural dimensions
             const img = new Image();
             img.onload = () => {
-                imageDimensions[bgUrl] = { width: img.naturalWidth, height: img.naturalHeight };
-                applyBackgroundWithDimensions(imageDimensions[bgUrl]);
+                imageDimensions[bgPath] = { width: img.naturalWidth, height: img.naturalHeight };
+                applyBackgroundWithDimensions(imageDimensions[bgPath]);
             };
-            img.src = bgUrl;
+            img.src = bgPath;
 
             // Fallback while loading
             document.body.style.backgroundSize = 'cover, cover';
@@ -859,6 +1192,17 @@ function applyBorder() {
 }
 
 /**
+ * Toggle the board's checkerboard pattern visibility.
+ * When hidden, the board becomes transparent to show the background image's pattern.
+ */
+function applyCheckerboard() {
+    const board = document.getElementById('board');
+    if (board) {
+        board.classList.toggle('no-checkerboard', checkerboardHidden);
+    }
+}
+
+/**
  * Show a status message in the dev legend
  */
 function updateLegendStatus(text) {
@@ -881,12 +1225,44 @@ function updateLegendStatus(text) {
  */
 function updateBgUrl() {
     const url = new URL(window.location);
-    url.searchParams.set('bg', BACKGROUNDS[currentBgIndex]);
+    const img = getCurrentBoardImage();
+    if (currentChapter) {
+        url.searchParams.set('chapter', currentChapter.id);
+    }
+    if (img) {
+        url.searchParams.set('bg', img);
+    }
     window.history.replaceState({}, '', url);
 }
 
 /**
- * Update URL with full dev config (background, corners, border)
+ * Update calibration status display in legend.
+ * Shows current image index, calibration status, and uncalibrated count.
+ */
+function updateCalibrationStatus() {
+    if (!currentChapter || devModeIndex !== 1) return;
+
+    const total = currentChapter.boardImages.length;
+    const current = currentBoardImageIndex + 1;
+    const img = currentChapter.boardImages[currentBoardImageIndex];
+    const calibrated = img ? img.calibrated : false;
+    const uncalibratedCount = currentChapter.boardImages.filter(i => !i.calibrated).length;
+
+    let status = `Image ${current}/${total}`;
+    if (calibrated) {
+        status += ' (calibrated)';
+    } else {
+        status += ' (NEEDS CALIBRATION)';
+    }
+    if (uncalibratedCount > 0) {
+        status += ` | ${uncalibratedCount} uncalibrated`;
+    }
+
+    updateLegendStatus(status);
+}
+
+/**
+ * Update URL with full dev config (background, corners, border, checkerboard)
  */
 function updateDevUrl() {
     const url = new URL(window.location);
@@ -901,5 +1277,154 @@ function updateDevUrl() {
     } else {
         url.searchParams.delete('border');
     }
+    if (checkerboardHidden) {
+        url.searchParams.set('checkerboard', '0');
+    } else {
+        url.searchParams.delete('checkerboard');
+    }
     window.history.replaceState({}, '', url);
+}
+
+
+// =============================================================================
+// CHAPTER SELECTION MENU
+// =============================================================================
+
+/**
+ * Open the chapter selection menu and populate it with available chapters.
+ */
+function openChapterMenu() {
+    const menu = document.getElementById('chapter-menu');
+    if (!menu) return;
+
+    populateChapterList();
+    menu.style.display = 'flex';
+
+    // Close menu when clicking on overlay (outside content)
+    menu.onclick = (e) => {
+        if (e.target === menu) {
+            closeChapterMenu();
+        }
+    };
+}
+
+/**
+ * Close the chapter selection menu.
+ */
+function closeChapterMenu() {
+    const menu = document.getElementById('chapter-menu');
+    if (menu) {
+        menu.style.display = 'none';
+    }
+}
+
+/**
+ * Populate the chapter list with cards for each available chapter.
+ */
+function populateChapterList() {
+    const list = document.getElementById('chapter-list');
+    if (!list || !chaptersData || !chaptersData.chapters) return;
+
+    list.innerHTML = '';
+
+    chaptersData.chapters.forEach((chapter, index) => {
+        const card = document.createElement('div');
+        card.className = 'chapter-card';
+        if (index === currentChapterIndex) {
+            card.classList.add('active');
+        }
+
+        // Thumbnail
+        const thumbnail = document.createElement('div');
+        thumbnail.className = 'chapter-thumbnail';
+        if (chapter.thumbnail) {
+            thumbnail.style.backgroundImage = `url('${chapter.thumbnail}')`;
+        }
+        card.appendChild(thumbnail);
+
+        // Info section
+        const info = document.createElement('div');
+        info.className = 'chapter-info';
+
+        const name = document.createElement('div');
+        name.className = 'chapter-name';
+        name.textContent = chapter.name;
+        info.appendChild(name);
+
+        if (chapter.description) {
+            const desc = document.createElement('div');
+            desc.className = 'chapter-description';
+            desc.textContent = chapter.description;
+            info.appendChild(desc);
+        }
+
+        // Image count
+        const count = document.createElement('div');
+        count.className = 'chapter-count';
+        const boardCount = chapter.boardImages ? chapter.boardImages.length : 0;
+        const chatCount = chapter.chatImages ? chapter.chatImages.length : 0;
+        count.textContent = `${boardCount} board images, ${chatCount} chat images`;
+        info.appendChild(count);
+
+        card.appendChild(info);
+
+        // Click handler
+        card.addEventListener('click', () => selectChapter(chapter.id));
+
+        list.appendChild(card);
+    });
+}
+
+/**
+ * Select a chapter and switch to it.
+ * @param {string} chapterId - The ID of the chapter to select
+ */
+async function selectChapter(chapterId) {
+    if (!chaptersData || !chaptersData.chapters) return;
+
+    const chapterIdx = chaptersData.chapters.findIndex(c => c.id === chapterId);
+    if (chapterIdx < 0) return;
+
+    // Update current chapter
+    currentChapterIndex = chapterIdx;
+    currentChapter = chaptersData.chapters[chapterIdx];
+    currentBoardImageIndex = 0;
+
+    // Update chapter name display
+    updateCurrentChapterName();
+
+    // Save to localStorage
+    if (currentChapter) {
+        localStorage.setItem('lastChapter', currentChapter.id);
+    }
+
+    // Update URL
+    updateBgUrl();
+
+    // Load the first image of this chapter
+    await loadBgConfig();
+    applyBackground();
+
+    // Reload chat backgrounds for new chapter
+    stopChatRotation();
+    await loadChapterMarkdown();
+    initChatBackground();
+
+    // Close menu
+    closeChapterMenu();
+
+    // If in calibration mode, show status
+    if (devModeIndex === 1) {
+        updateCalibrationStatus();
+    }
+}
+
+/**
+ * Update the chapter name displayed in the menu button.
+ */
+function updateCurrentChapterName() {
+    const nameSpan = document.getElementById('current-chapter-name');
+    if (nameSpan && currentChapter) {
+        nameSpan.textContent = currentChapter.name;
+    }
 }

@@ -21,14 +21,13 @@ func main() {
 	// Static files
 	fs := http.FileServer(http.Dir("../web"))
 
-	// Root handler - creates game and redirects, or serves static files
+	// Root handler - serves book page or game page
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Root path: create new game and redirect
+		// Root path: serve index.html (book will be shown by JS)
 		if path == "/" {
-			game := createNewGame()
-			http.Redirect(w, r, "/"+game.ID, http.StatusFound)
+			http.ServeFile(w, r, "../web/index.html")
 			return
 		}
 
@@ -134,22 +133,45 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 // configHandler handles saving/loading background configs
+// Supports paths like:
+// - /config/basic-household/bg-01.png (new chapter-based path)
+// - /config/chapters.json (master config)
 func configHandler(w http.ResponseWriter, r *http.Request) {
-	// Extract image name from path: /config/bg-09.png
-	imageName := strings.TrimPrefix(r.URL.Path, "/config/")
-	if imageName == "" {
-		writeError(w, http.StatusBadRequest, "missing image name")
+	// Extract path from URL: /config/basic-household/bg-01.png
+	path := strings.TrimPrefix(r.URL.Path, "/config/")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "missing path")
 		return
 	}
 
-	configPath := filepath.Join("..", "web", imageName+".json")
+	var configPath string
+	if path == "chapters.json" {
+		// Master chapters config
+		configPath = filepath.Join("..", "web", "chapters.json")
+	} else if strings.Contains(path, "/") {
+		// Chapter-based path: basic-household/bg-01.png
+		parts := strings.Split(path, "/")
+		if len(parts) == 2 {
+			chapterID := parts[0]
+			imageName := parts[1]
+			configPath = filepath.Join("..", "web", "chapters", chapterID, "board", imageName+".json")
+		} else {
+			writeError(w, http.StatusBadRequest, "invalid path format")
+			return
+		}
+	} else {
+		// Legacy path for backwards compatibility: bg-01.png
+		// Check if it exists in any chapter's board folder
+		configPath = filepath.Join("..", "web", "chapters", "basic-household", "board", path+".json")
+	}
 
 	switch r.Method {
 	case http.MethodGet:
 		// Load config
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			writeError(w, http.StatusNotFound, "config not found")
+			log.Printf("Config not found at path: %s (error: %v)", configPath, err)
+			writeError(w, http.StatusNotFound, "config not found: "+configPath)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

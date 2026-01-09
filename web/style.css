@@ -1,4 +1,28 @@
-/* Chess UI - Blend Mode Integration with Real Wood Textures */
+/**
+ * Chess UI Styles
+ * ================
+ *
+ * Visual styling for the chess game UI. Uses blend modes to integrate
+ * UI elements with real wood textures for a natural, tactile feel.
+ *
+ * Sections:
+ * - Reset & Base Styles
+ * - Layout Containers
+ * - Chess Board & Squares
+ * - Piece Styling
+ * - Square States (selected, legal moves, last move, check)
+ * - Game Info & Status
+ * - Buttons
+ * - Modals (game over, promotion)
+ * - Undo Panel
+ * - Replay Controls
+ * - Chat Panel
+ * - Dev Mode Tools
+ */
+
+/* =============================================================================
+   RESET & BASE STYLES
+   ============================================================================= */
 
 * {
     margin: 0;
@@ -10,7 +34,6 @@ html, body {
     overflow: hidden;
     height: 100vh;
 }
-
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
@@ -26,13 +49,20 @@ body {
     letter-spacing: 0.02em;
 }
 
+/* =============================================================================
+   LAYOUT CONTAINERS
+   ============================================================================= */
+
 .container {
     max-width: 540px;
     margin: 0 auto;
     padding: 60px 20px;
 }
 
-/* Game info - blend mode integration with wood */
+/* =============================================================================
+   GAME INFO & STATUS
+   ============================================================================= */
+
 .game-info {
     display: flex;
     justify-content: center;
@@ -81,7 +111,10 @@ body {
     mix-blend-mode: screen;
 }
 
-/* Board wrapper for wooden frame */
+/* =============================================================================
+   CHESS BOARD
+   ============================================================================= */
+
 .board-container {
     display: flex;
     justify-content: center;
@@ -153,7 +186,10 @@ body {
     -webkit-mask-size: calc(100% / 4) calc(100% / 4);
 }
 
-/* Board squares - transparent to show wood beneath */
+/* =============================================================================
+   BOARD SQUARES & PIECES
+   ============================================================================= */
+
 .square {
     display: flex;
     align-items: center;
@@ -191,12 +227,14 @@ body {
         0 0 2px rgba(250, 245, 232, 0.15);
 }
 
-/* Hover state */
+/* =============================================================================
+   SQUARE STATES (hover, selected, legal moves, check)
+   ============================================================================= */
+
 .square:hover {
     filter: brightness(1.06);
 }
 
-/* Selected square */
 .square.selected {
     background:
         linear-gradient(
@@ -257,6 +295,10 @@ body {
             rgba(140, 100, 30, 0.35) 100%
         ) !important;
 }
+
+/* =============================================================================
+   BUTTONS
+   ============================================================================= */
 
 button {
     padding: 10px 24px;
@@ -362,47 +404,10 @@ button:active {
     50% { box-shadow: inset 0 0 25px rgba(160, 80, 30, 0.7); }
 }
 
-/* Hint for single legal move in check - piece to move */
-.square.hint-from {
-    animation: hint-pulse 1s ease-in-out infinite;
-    box-shadow: inset 0 0 20px rgba(100, 200, 100, 0.6) !important;
-}
+/* =============================================================================
+   CHECK BANNER
+   ============================================================================= */
 
-.square.hint-from::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    border: 3px solid rgba(100, 200, 100, 0.8);
-    border-radius: 4px;
-    pointer-events: none;
-    z-index: 10;
-}
-
-/* Hint for single legal move in check - destination */
-.square.hint-to::after {
-    content: '→';
-    position: absolute;
-    font-size: 24px;
-    color: rgba(100, 200, 100, 0.9);
-    text-shadow: 0 0 10px rgba(100, 200, 100, 0.5);
-    z-index: 10;
-    animation: hint-arrow 1s ease-in-out infinite;
-}
-
-@keyframes hint-pulse {
-    0%, 100% { box-shadow: inset 0 0 15px rgba(100, 200, 100, 0.4); }
-    50% { box-shadow: inset 0 0 30px rgba(100, 200, 100, 0.7); }
-}
-
-@keyframes hint-arrow {
-    0%, 100% { opacity: 0.6; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.2); }
-}
-
-/* Check banner - blend mode styled */
 .check-banner {
     position: fixed;
     top: 30px;
@@ -427,7 +432,10 @@ button:active {
     to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* Game over modal - blend mode wood themed */
+/* =============================================================================
+   MODALS (game over, promotion)
+   ============================================================================= */
+
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -553,7 +561,10 @@ button:active {
     transform: scale(1.05);
 }
 
-/* Replay controls - blend mode wood themed */
+/* =============================================================================
+   REPLAY CONTROLS
+   ============================================================================= */
+
 .replay-controls {
     display: flex;
     justify-content: center;
@@ -615,7 +626,10 @@ button:active {
     mix-blend-mode: screen;
 }
 
-/* Undo panel - blend mode wood themed */
+/* =============================================================================
+   UNDO PANEL
+   ============================================================================= */
+
 .undo-panel {
     background: rgba(140, 100, 50, 0.5);
     border: 1px solid rgba(200, 160, 100, 0.4);
@@ -707,7 +721,10 @@ button:focus {
     color: #fff8e8;
 }
 
-/* Chat Panel - Simple with bubbles */
+/* =============================================================================
+   CHAT PANEL
+   ============================================================================= */
+
 .chat-panel {
     position: fixed;
     bottom: 20px;
@@ -718,6 +735,28 @@ button:focus {
     display: flex;
     flex-direction: column;
     z-index: 50;
+    /* Chat background image support */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    transition: background-image 0.8s ease-in-out;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Semi-transparent overlay for readability when chat has background */
+.chat-panel.has-background::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.chat-panel.has-background > * {
+    position: relative;
+    z-index: 1;
 }
 
 .chat-messages {
@@ -894,7 +933,184 @@ button:focus {
     padding: 10px 18px;
 }
 
-/* Dev controls legend - hidden by default */
+/* =============================================================================
+   CHAPTER SELECTION MENU
+   ============================================================================= */
+
+/* Menu button in bottom-left corner */
+.chapter-menu-btn {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(60, 40, 25, 0.85);
+    border: 1px solid rgba(180, 140, 90, 0.4);
+    border-radius: 6px;
+    color: #f5e6d0;
+    font-size: 0.8rem;
+    cursor: pointer;
+    z-index: 60;
+    transition: all 0.2s ease;
+    mix-blend-mode: normal;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.chapter-menu-btn:hover {
+    background: rgba(80, 55, 35, 0.95);
+    border-color: rgba(200, 160, 100, 0.6);
+}
+
+.chapter-icon {
+    font-size: 1.1rem;
+}
+
+#current-chapter-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Full-screen chapter menu overlay */
+.chapter-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(20, 15, 10, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    animation: fade-in 0.2s ease;
+}
+
+.chapter-menu-content {
+    background: url('wood-border.jpg');
+    background-size: cover;
+    border-radius: 12px;
+    padding: 30px 40px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    position: relative;
+}
+
+.chapter-menu-content h2 {
+    text-align: center;
+    color: #fff8e8;
+    font-size: 1.3rem;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Chapter list grid */
+.chapter-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+/* Individual chapter card */
+.chapter-card {
+    background: rgba(40, 25, 15, 0.7);
+    border: 2px solid rgba(180, 140, 90, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chapter-card:hover {
+    background: rgba(60, 40, 25, 0.85);
+    border-color: rgba(200, 160, 100, 0.6);
+    transform: translateY(-2px);
+}
+
+.chapter-card.selected {
+    border-color: rgba(150, 200, 100, 0.8);
+    box-shadow: 0 0 15px rgba(150, 200, 100, 0.3);
+}
+
+.chapter-thumbnail {
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    margin-bottom: 10px;
+}
+
+.chapter-thumbnail-placeholder {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: linear-gradient(135deg, rgba(80, 50, 30, 0.6), rgba(50, 30, 15, 0.8));
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    color: rgba(255, 248, 232, 0.4);
+    font-size: 2rem;
+}
+
+.chapter-name {
+    color: #fff8e8;
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.chapter-description {
+    color: rgba(255, 248, 232, 0.6);
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.chapter-image-count {
+    color: rgba(255, 248, 232, 0.5);
+    font-size: 0.7rem;
+    margin-top: 6px;
+}
+
+.chapter-menu-close {
+    display: block;
+    margin: 0 auto;
+    padding: 10px 30px;
+    background: rgba(100, 70, 45, 0.7);
+    border: 1px solid rgba(180, 140, 90, 0.4);
+    border-radius: 4px;
+    color: #f5e6d0;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.chapter-menu-close:hover {
+    background: rgba(120, 85, 55, 0.85);
+    border-color: rgba(200, 160, 100, 0.6);
+}
+
+/* Hide chapter button in dev mode */
+body.dev-mode .chapter-menu-btn {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* =============================================================================
+   DEV MODE TOOLS
+   ============================================================================= */
+
 .dev-legend {
     position: fixed;
     bottom: 20px;
@@ -918,6 +1134,15 @@ body.dev-mode .chat-panel {
 
 /* Hide board border (wood frame) */
 .board-container.no-border::before {
+    display: none;
+}
+
+/* Hide checkerboard pattern (show only background image) */
+.board.no-checkerboard {
+    background: transparent !important;
+}
+
+.board.no-checkerboard::before {
     display: none;
 }
 
