@@ -22,8 +22,63 @@ let singleMoveHint = null; // { from, to } when in check with only one legal mov
 async function init() {
     renderBoard();
     setupPromotionModal();
+    setupMenuToggle();
     document.getElementById('new-game').addEventListener('click', newGame);
     await newGame();
+}
+
+// Setup menu visibility toggle
+// Tap/click outside the board to show/hide menus
+function setupMenuToggle() {
+    const board = document.getElementById('board');
+
+    document.addEventListener('click', (e) => {
+        // Don't toggle if clicking inside the board (playing the game)
+        if (board.contains(e.target)) {
+            return;
+        }
+
+        // Don't toggle if clicking on modals
+        if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) {
+            return;
+        }
+
+        // Don't toggle if clicking on interactive elements when menu is visible
+        if (document.body.classList.contains('menu-visible')) {
+            if (e.target.closest('button') || e.target.closest('.controls') ||
+                e.target.closest('.move-history') || e.target.closest('.replay-controls') ||
+                e.target.closest('.undo-panel')) {
+                return;
+            }
+        }
+
+        // Toggle menu visibility
+        document.body.classList.toggle('menu-visible');
+    });
+
+    // Touch support for mobile
+    let touchHandled = false;
+    document.addEventListener('touchend', (e) => {
+        // Prevent double-firing with click
+        touchHandled = true;
+        setTimeout(() => { touchHandled = false; }, 300);
+
+        if (board.contains(e.target)) {
+            return;
+        }
+        if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) {
+            return;
+        }
+        if (document.body.classList.contains('menu-visible')) {
+            if (e.target.closest('button') || e.target.closest('.controls') ||
+                e.target.closest('.move-history') || e.target.closest('.replay-controls') ||
+                e.target.closest('.undo-panel')) {
+                return;
+            }
+        }
+
+        document.body.classList.toggle('menu-visible');
+    }, { passive: true });
 }
 
 // Create a new game
@@ -537,8 +592,12 @@ function updateUI() {
     const displayStatus = isLive ? gameState.status : 'ongoing';
     statusEl.textContent = isLive ? capitalize(gameState.status) : `Move ${displayMoveIndex + 1}/${gameState.moveHistory.length}`;
 
-    // Update container class for status styling
+    // Update container class for status styling (preserve menu-visible class)
+    const menuVisible = document.body.classList.contains('menu-visible');
     document.body.className = isLive ? `status-${gameState.status}` : '';
+    if (menuVisible) {
+        document.body.classList.add('menu-visible');
+    }
 
     // Update move history
     const historyEl = document.getElementById('history');
