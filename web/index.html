@@ -26,28 +26,12 @@
             <div class="board" id="board"></div>
         </div>
 
-        <div class="controls">
-            <button id="new-game">New Game</button>
-        </div>
 
-        <div class="game-info">
-            <div class="turn">Turn: <span id="turn">White</span></div>
-            <div class="status">Status: <span id="status">ongoing</span></div>
-        </div>
     </div>
 
     <!-- Check banner (shown briefly when in check) -->
     <div id="check-banner" class="check-banner" style="display: none;">CHECK!</div>
 
-    <!-- Game over modal -->
-    <div id="game-over-modal" class="modal-overlay" style="display: none;">
-        <div class="modal">
-            <h2 id="game-over-title">Game Over</h2>
-            <p id="game-over-message" class="winner"></p>
-            <button onclick="newGame()">Play Again</button>
-            <button onclick="closeGameOverModal()">Review Game</button>
-        </div>
-    </div>
 
     <!-- Dev controls legend -->
     <div class="dev-legend">

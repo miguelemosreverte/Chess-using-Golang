@@ -1,6 +1,6 @@
 // Chess UI Application
 
-const API_BASE = '';
+const API_BASE = '/api';
 
 // Unicode chess pieces
 const PIECES = {
@@ -17,6 +17,9 @@ let pendingPromotion = null; // { from, to } when awaiting promotion choice
 let replayIndex = -1; // -1 means live view, >= 0 means viewing history
 let previousStatus = null; // Track status changes for animations
 let singleMoveHint = null; // { from, to } when in check with only one legal move
+let lastMoveCount = 0; // Track moves for polling
+let chatMessages = []; // Local cache of chat messages
+let playerId = null; // Unique player ID for this session
 
 // Background images for testing
 const BACKGROUNDS = [
@@ -50,15 +53,31 @@ let draggingHandle = null;
 
 // Initialize the app
 async function init() {
+    // Generate unique player ID for this session
+    playerId = localStorage.getItem('playerId');
+    if (!playerId) {
+        playerId = Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('playerId', playerId);
+    }
+
+    // Get game ID from URL path
+    const path = window.location.pathname;
+    gameId = path.substring(1); // Remove leading slash
+
     renderBoard();
     setupPromotionModal();
-    setupMenuToggle();
-    document.getElementById('new-game').addEventListener('click', newGame);
-    await newGame();
+
+    // Load game state
+    await loadGame();
+
     // Setup background after board is rendered
     requestAnimationFrame(() => {
         setupBackgroundToggle();
     });
+
+    // Start polling for updates
+    setInterval(pollGameState, 1000);
+    setInterval(pollChat, 2000);
 }
 
 // Background toggle with arrow keys and draggable corner dev controls
@@ -306,7 +325,6 @@ function resetBoardTransform() {
 function resetUITransform() {
     const uiElements = [
         document.querySelector('.controls'),
-        document.querySelector('.game-info'),
         document.querySelector('.chat-panel')
     ];
 
@@ -397,7 +415,6 @@ function applyUITransform(boardRect) {
     // Apply to UI elements
     const uiElements = [
         { el: document.querySelector('.controls'), pos: 'bottom' },
-        { el: document.querySelector('.game-info'), pos: 'bottom' },
         { el: document.querySelector('.chat-panel'), pos: 'side' }
     ];
 
@@ -557,34 +574,92 @@ function setupMenuToggle() {
         if (e.target.closest('.modal-overlay') || e.target.closest('.promotion-modal')) return;
         if (document.body.classList.contains('menu-visible')) {
             if (e.target.closest('button') || e.target.closest('.controls') ||
-                e.target.closest('.game-info') ||
                 e.target.closest('.undo-panel') || e.target.closest('.chat-panel')) return;
         }
         document.body.classList.toggle('menu-visible');
     });
 }
 
-// Create a new game
-async function newGame() {
+// Load game state from server
+async function loadGame() {
     try {
-        const response = await fetch(`${API_BASE}/games`, { method: 'POST' });
-        const game = await response.json();
-        gameId = game.id;
-        gameState = game;
+        const response = await fetch(`${API_BASE}/games/${gameId}`);
+        if (!response.ok) {
+            console.error('Game not found');
+            return;
+        }
+        gameState = await response.json();
+        lastMoveCount = gameState.moveHistory?.length || 0;
         selectedSquare = null;
         legalMoves = [];
         pendingPromotion = null;
         replayIndex = -1;
         previousStatus = null;
         singleMoveHint = null;
-        hideGameOverModal();
         updateUI();
-
-        // Cycle to next background
-        cycleBackground();
     } catch (error) {
-        console.error('Failed to create game:', error);
+        console.error('Failed to load game:', error);
     }
+}
+
+// Poll for game state updates (for multiplayer sync)
+async function pollGameState() {
+    if (!gameId) return;
+    try {
+        const response = await fetch(`${API_BASE}/games/${gameId}`);
+        if (!response.ok) return;
+        const game = await response.json();
+
+        const newMoveCount = game.moveHistory?.length || 0;
+        if (newMoveCount !== lastMoveCount) {
+            lastMoveCount = newMoveCount;
+            const oldStatus = gameState?.status;
+            gameState = game;
+
+            // Show check banner if newly in check
+            if (gameState.status === 'check' && oldStatus !== 'check') {
+                showCheckBanner();
+            }
+
+            // Auto-restart on game over
+            if (gameState.status === 'checkmate' || gameState.status === 'stalemate') {
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            }
+
+            updateUI();
+        }
+    } catch (error) {
+        // Silently ignore polling errors
+    }
+}
+
+// Poll for chat updates
+async function pollChat() {
+    if (!gameId) return;
+    try {
+        const response = await fetch(`${API_BASE}/games/${gameId}/chat`);
+        if (!response.ok) return;
+        const messages = await response.json();
+
+        if (messages.length > chatMessages.length) {
+            const newMessages = messages.slice(chatMessages.length);
+            chatMessages = messages;
+            newMessages.forEach(msg => {
+                if (msg.player !== playerId) {
+                    addChatMessageToUI(msg.message, 'received');
+                }
+            });
+        }
+    } catch (error) {
+        // Silently ignore polling errors
+    }
+}
+
+// Create a new game (redirect to root)
+function newGame() {
+    window.location.href = '/';
 }
 
 // Cycle to the next background image
@@ -783,9 +858,9 @@ async function makeMove(from, to, promotion = null) {
             singleMoveHint = null;
         }
 
-        // Show game over modal
+        // Auto-restart on game over
         if (gameState.status === 'checkmate' || gameState.status === 'stalemate') {
-            showGameOverModal();
+            setTimeout(() => newGame(), 2000);
         }
 
         updateUI();
@@ -801,34 +876,6 @@ function showCheckBanner() {
     setTimeout(() => {
         banner.style.display = 'none';
     }, 2000);
-}
-
-// Show game over modal
-function showGameOverModal() {
-    const modal = document.getElementById('game-over-modal');
-    const title = document.getElementById('game-over-title');
-    const message = document.getElementById('game-over-message');
-
-    if (gameState.status === 'checkmate') {
-        const winner = gameState.turn === 'white' ? 'Black' : 'White';
-        title.textContent = 'Checkmate!';
-        message.textContent = `${winner} wins!`;
-    } else if (gameState.status === 'stalemate') {
-        title.textContent = 'Stalemate';
-        message.textContent = 'The game is a draw.';
-    }
-
-    modal.style.display = 'flex';
-}
-
-// Hide game over modal
-function hideGameOverModal() {
-    document.getElementById('game-over-modal').style.display = 'none';
-}
-
-// Close game over modal (to review game)
-function closeGameOverModal() {
-    hideGameOverModal();
 }
 
 // Undo functions
@@ -1080,15 +1127,6 @@ function updateUI() {
     document.body.className = isLive ? `status-${gameState.status}` : '';
     if (menuVisible) document.body.classList.add('menu-visible');
 
-    // Update turn and status
-    const turnEl = document.getElementById('turn');
-    const statusEl = document.getElementById('status');
-    if (turnEl) {
-        turnEl.textContent = capitalize(gameState.turn);
-    }
-    if (statusEl) {
-        statusEl.textContent = capitalize(gameState.status);
-    }
 
     // Update undo panel
     const undoPanel = document.getElementById('undo-panel');
@@ -1118,23 +1156,46 @@ function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// Send chat message (local only, no server)
-function sendChat() {
+// Send chat message to server
+async function sendChat() {
     const input = document.getElementById('chat-input');
     const message = input.value.trim();
-    if (!message) return;
+    if (!message || !gameId) return;
 
+    // Add to UI immediately
+    addChatMessageToUI(message, 'sent');
+
+    // Send to server
+    try {
+        await fetch(`${API_BASE}/games/${gameId}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                player: playerId,
+                message: message,
+                time: Date.now()
+            })
+        });
+        // Add to local cache
+        chatMessages.push({ player: playerId, message, time: Date.now() });
+    } catch (error) {
+        console.error('Failed to send chat:', error);
+    }
+
+    // Clear input
+    input.value = '';
+}
+
+// Add a chat message to the UI
+function addChatMessageToUI(message, type) {
     const messagesContainer = document.getElementById('chat-messages');
     const messageEl = document.createElement('div');
-    messageEl.className = 'chat-message sent';
+    messageEl.className = `chat-message ${type}`;
     messageEl.textContent = message;
     messagesContainer.appendChild(messageEl);
 
     // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-    // Clear input
-    input.value = '';
 }
 
 // Start the app

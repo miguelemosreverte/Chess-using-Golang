@@ -11,20 +11,6 @@ html, body {
     height: 100vh;
 }
 
-/* Hidden UI by default - click outside board to toggle */
-.controls,
-.game-info,
-.chat-panel {
-    opacity: 0;
-    pointer-events: none;
-}
-
-body.menu-visible .controls,
-body.menu-visible .game-info,
-body.menu-visible .chat-panel {
-    opacity: 1;
-    pointer-events: auto;
-}
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Segoe UI', sans-serif;
@@ -853,7 +839,6 @@ button:focus {
 
 /* In dev mode, disable menu toggle click behavior */
 body.dev-mode .controls,
-body.dev-mode .game-info,
 body.dev-mode .chat-panel {
     opacity: 0.3;
     pointer-events: none;

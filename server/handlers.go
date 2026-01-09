@@ -38,6 +38,46 @@ func (s *GameStore) Save(game domain.Game) {
 
 var store = NewGameStore()
 
+// ChatMessage represents a single chat message
+type ChatMessage struct {
+	Player  string `json:"player"`
+	Message string `json:"message"`
+	Time    int64  `json:"time"`
+}
+
+// ChatStore holds chat messages per game
+type ChatStore struct {
+	mu       sync.RWMutex
+	messages map[string][]ChatMessage
+}
+
+func NewChatStore() *ChatStore {
+	return &ChatStore{
+		messages: make(map[string][]ChatMessage),
+	}
+}
+
+func (c *ChatStore) GetMessages(gameID string) []ChatMessage {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.messages[gameID]
+}
+
+func (c *ChatStore) AddMessage(gameID string, msg ChatMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.messages[gameID] = append(c.messages[gameID], msg)
+}
+
+var chatStore = NewChatStore()
+
+// createNewGame creates a new game and stores it (used by main for redirects)
+func createNewGame() domain.Game {
+	game := domain.NewGame()
+	store.Save(game)
+	return game
+}
+
 // CreateGame handles POST /games
 func CreateGame(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -53,14 +93,14 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ToGameJSON(game))
 }
 
-// GetGame handles GET /games/{id}
+// GetGame handles GET /api/games/{id}
 func GetGame(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	id := extractGameID(r.URL.Path, "/games/")
+	id := extractGameID(r.URL.Path, "/api/games/")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "missing game id")
 		return
@@ -81,14 +121,14 @@ func GetGame(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ToGameJSON(game))
 }
 
-// GetMoves handles GET /games/{id}/moves
+// GetMoves handles GET /api/games/{id}/moves
 func GetMoves(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	id := extractGameID(r.URL.Path, "/games/")
+	id := extractGameID(r.URL.Path, "/api/games/")
 	id = strings.TrimSuffix(id, "/moves")
 
 	game, ok := store.Get(id)
@@ -116,14 +156,14 @@ func GetMoves(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ToMovesResponseJSON(moves))
 }
 
-// MakeMove handles POST /games/{id}/moves
+// MakeMove handles POST /api/games/{id}/moves
 func MakeMove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	id := extractGameID(r.URL.Path, "/games/")
+	id := extractGameID(r.URL.Path, "/api/games/")
 	id = strings.TrimSuffix(id, "/moves")
 
 	game, ok := store.Get(id)
@@ -252,13 +292,44 @@ func extractGameID(path, prefix string) string {
 	return strings.TrimPrefix(path, prefix)
 }
 
-// extractUndoGameID extracts game ID from undo paths like /games/{id}/undo/request
+// extractUndoGameID extracts game ID from undo paths like /api/games/{id}/undo/request
 func extractUndoGameID(path string) string {
-	path = strings.TrimPrefix(path, "/games/")
+	path = strings.TrimPrefix(path, "/api/games/")
 	if idx := strings.Index(path, "/undo"); idx != -1 {
 		return path[:idx]
 	}
 	return path
+}
+
+// GetChat handles GET /api/games/{id}/chat
+func GetChat(w http.ResponseWriter, r *http.Request) {
+	id := extractGameID(r.URL.Path, "/api/games/")
+	id = strings.TrimSuffix(id, "/chat")
+
+	messages := chatStore.GetMessages(id)
+	if messages == nil {
+		messages = []ChatMessage{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
+// PostChat handles POST /api/games/{id}/chat
+func PostChat(w http.ResponseWriter, r *http.Request) {
+	id := extractGameID(r.URL.Path, "/api/games/")
+	id = strings.TrimSuffix(id, "/chat")
+
+	var msg ChatMessage
+	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	chatStore.AddMessage(id, msg)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // writeError writes a JSON error response.

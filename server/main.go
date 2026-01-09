@@ -14,27 +14,52 @@ func main() {
 	mux := http.NewServeMux()
 
 	// API routes
-	mux.HandleFunc("/games", gamesHandler)
-	mux.HandleFunc("/games/", gameHandler)
+	mux.HandleFunc("/api/games", gamesHandler)
+	mux.HandleFunc("/api/games/", gameHandler)
 	mux.HandleFunc("/config/", configHandler)
 
-	// Serve static files from web directory
+	// Static files
 	fs := http.FileServer(http.Dir("../web"))
-	mux.Handle("/", fs)
+
+	// Root handler - creates game and redirects, or serves static files
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Root path: create new game and redirect
+		if path == "/" {
+			game := createNewGame()
+			http.Redirect(w, r, "/"+game.ID, http.StatusFound)
+			return
+		}
+
+		// Check if it's a game ID (16 hex chars)
+		gameID := strings.TrimPrefix(path, "/")
+		if len(gameID) == 16 && isHexString(gameID) {
+			// Serve index.html for game URLs
+			http.ServeFile(w, r, "../web/index.html")
+			return
+		}
+
+		// Otherwise serve static files
+		fs.ServeHTTP(w, r)
+	})
 
 	addr := ":8080"
 	fmt.Printf("Chess server running at http://localhost%s\n", addr)
-	fmt.Println("API endpoints:")
-	fmt.Println("  POST /games              - Create a new game")
-	fmt.Println("  GET  /games/{id}         - Get game state")
-	fmt.Println("  GET  /games/{id}/moves   - Get legal moves")
-	fmt.Println("  POST /games/{id}/moves   - Make a move")
-	fmt.Println("  POST /games/{id}/undo/request - Request undo")
-	fmt.Println("  POST /games/{id}/undo/accept  - Accept undo")
-	fmt.Println("  POST /games/{id}/undo/reject  - Reject undo")
+	fmt.Println("Visit http://localhost:8080 to start a new game")
+	fmt.Println("Share the URL to invite another player")
 	fmt.Println()
 
 	log.Fatal(http.ListenAndServe(addr, corsMiddleware(mux)))
+}
+
+func isHexString(s string) bool {
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // gamesHandler routes requests to /games
@@ -47,9 +72,22 @@ func gamesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// gameHandler routes requests to /games/{id} and /games/{id}/moves
+// gameHandler routes requests to /api/games/{id} and sub-paths
 func gameHandler(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+
+	// Handle chat endpoints
+	if strings.HasSuffix(path, "/chat") {
+		switch r.Method {
+		case http.MethodGet:
+			GetChat(w, r)
+		case http.MethodPost:
+			PostChat(w, r)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+		return
+	}
 
 	// Handle undo endpoints
 	if strings.Contains(path, "/undo/") {
