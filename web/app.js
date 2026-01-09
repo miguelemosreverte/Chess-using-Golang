@@ -70,6 +70,9 @@ async function init() {
     // Load game state
     await loadGame();
 
+    // Load existing chat messages
+    await loadChat();
+
     // Setup background after board is rendered
     requestAnimationFrame(() => {
         setupBackgroundToggle();
@@ -77,7 +80,25 @@ async function init() {
 
     // Start polling for updates
     setInterval(pollGameState, 1000);
-    setInterval(pollChat, 2000);
+    setInterval(pollChat, 1000);
+}
+
+// Load existing chat messages from server
+async function loadChat() {
+    if (!gameId) return;
+    try {
+        const response = await fetch(`${API_BASE}/games/${gameId}/chat`);
+        if (!response.ok) return;
+        const messages = await response.json();
+
+        chatMessages = messages;
+        messages.forEach(msg => {
+            const type = msg.player === playerId ? 'sent' : 'received';
+            addChatMessageToUI(msg.message, type);
+        });
+    } catch (error) {
+        console.error('Failed to load chat:', error);
+    }
 }
 
 // Background toggle with arrow keys and draggable corner dev controls
