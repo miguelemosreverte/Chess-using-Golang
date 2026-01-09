@@ -53,11 +53,12 @@ let draggingHandle = null;
 
 // Initialize the app
 async function init() {
-    // Generate unique player ID for this session
-    playerId = localStorage.getItem('playerId');
+    // Generate unique player ID for this tab session
+    // Use sessionStorage so each tab gets its own ID (important for same-browser testing)
+    playerId = sessionStorage.getItem('playerId');
     if (!playerId) {
         playerId = Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('playerId', playerId);
+        sessionStorage.setItem('playerId', playerId);
     }
 
     // Get game ID from URL path
