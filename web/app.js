@@ -30,20 +30,6 @@ const BACKGROUNDS = [
 ];
 let currentBgIndex = 0;
 
-// Saved configurations per background image
-// corners are stored as percentages of window size (0-1)
-const BG_CONFIGS = {
-    'bg-09.png': {
-        corners: [
-            {x: 0.3069, y: 0.1311},
-            {x: 0.2996, y: 0.8175},
-            {x: 0.7050, y: 0.8239},
-            {x: 0.7011, y: 0.1362}
-        ],
-        border: false
-    }
-};
-
 // Dev controls for board positioning
 let devMode = false;
 let borderHidden = false;
@@ -259,18 +245,7 @@ async function loadBgConfig() {
             return;
         }
     } catch (e) {
-        // Server config not found, try local
-    }
-
-    // Fall back to local BG_CONFIGS
-    const config = BG_CONFIGS[bgName];
-    if (config) {
-        corners = [...config.corners];
-        borderHidden = config.border === false;
-        calibrationViewport = config.calibrationViewport || null;
-        applyCornerTransform();
-        applyBorder();
-    } else {
+        // Server config not found, reset to defaults
         corners = [];
         calibrationViewport = null;
         borderHidden = false;
@@ -345,12 +320,6 @@ async function saveConfigToServer() {
 
         if (response.ok) {
             updateLegendStatus('Saved!');
-            // Update local config too
-            BG_CONFIGS[bgName] = {
-                corners: [...corners],
-                border: !borderHidden,
-                calibrationViewport: { ...config.calibrationViewport }
-            };
         } else {
             updateLegendStatus('Save failed');
         }
