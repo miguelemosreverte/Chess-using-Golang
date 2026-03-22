@@ -579,9 +579,26 @@ async function loadBgConfig() {
     }
 
     try {
+        // Try localStorage first (user-saved calibrations)
+        let config = null;
         const stored = localStorage.getItem('calibration_' + configPath);
         if (stored) {
-            const config = JSON.parse(stored);
+            config = JSON.parse(stored);
+        } else {
+            // Fall back to static .json config files shipped with the project
+            const parts = configPath.split('/');
+            if (parts.length === 2) {
+                const staticPath = `chapters/${parts[0]}/board/${parts[1]}.json`;
+                try {
+                    const response = await fetch(staticPath);
+                    if (response.ok) {
+                        config = await response.json();
+                    }
+                } catch (e) { /* not found, use defaults */ }
+            }
+        }
+
+        if (config) {
             corners = [...config.corners];
             borderHidden = config.border === false;
             checkerboardHidden = config.checkerboard === false;

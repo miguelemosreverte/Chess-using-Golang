@@ -93,6 +93,7 @@ let autoHelloSent = false;
 /** Whether this player is the game creator (came from book selector) */
 let isGameCreator = false;
 
+
 /**
  * Initialize the application on page load.
  */
@@ -200,6 +201,29 @@ async function init() {
     // Load player color for this game (if previously set)
     myColor = sessionStorage.getItem(`myColor_${gameId}`) || null;
 
+    // For non-creator joins: claim seat and show intro BEFORE rendering anything
+    // This prevents the board from flashing in white orientation before flipping
+    const isJoiner = !transitionOverlay && !isGameCreator && !isChampionshipContinuation;
+    if (isJoiner) {
+        // Claim seat first so we know our color before any rendering
+        if (!myColor) {
+            myColor = await claimSeat(gameId, playerId);
+            sessionStorage.setItem(`myColor_${gameId}`, myColor);
+        }
+
+        // Show joiner intro transition BEFORE the board is visible
+        const joinerParams = new URLSearchParams(window.location.search);
+        const chapterParam = joinerParams.get('chapter');
+        const boardParam = joinerParams.get('board');
+        // We'll handle the intro after setupBackgroundToggle loads chapter data
+    }
+
+    // Hide the game container until we're ready to show it
+    const container = document.querySelector('.container');
+    if (isJoiner || transitionOverlay) {
+        container.style.visibility = 'hidden';
+    }
+
     renderBoard();
     setupPromotionModal();
 
@@ -219,6 +243,7 @@ async function init() {
 
             if (transitionOverlay) {
                 transitionOverlay.addEventListener('click', () => {
+                    container.style.visibility = 'visible';
                     transitionOverlay.style.transition = 'opacity 0.5s ease-out';
                     transitionOverlay.style.opacity = '0';
                     setTimeout(() => {
@@ -255,9 +280,18 @@ async function init() {
                     updateUI();
                     sendAutoHello();
                     checkForOpponent();
+
+                    setTimeout(() => {
+                        if (revealedPieces !== 'all') {
+                            revealedPieces = 'all';
+                            updateUI();
+                        }
+                    }, 3000);
                     this.removeEventListener('click', onBoardClick);
                 }, { once: true });
             } else if (!isGameCreator && !isChampionshipContinuation) {
+                // Seat was already claimed before rendering (see above)
+                // Show joiner intro now that chapter data is loaded
                 const chapterParam = params.get('chapter');
                 const boardParam = params.get('board');
 
@@ -265,12 +299,8 @@ async function init() {
                     await showJoinerIntro(currentChapter, boardParam);
                 }
 
-                if (!myColor) {
-                    const player1Color = getPlayer1ColorForGame();
-                    myColor = player1Color === 'white' ? 'black' : 'white';
-                    sessionStorage.setItem(`myColor_${gameId}`, myColor);
-                    sessionStorage.setItem('championshipRole', 'guest');
-                }
+                // Reveal the game container (was hidden to prevent flash)
+                container.style.visibility = 'visible';
 
                 piecesHidden = false;
                 revealedPieces = 'all';

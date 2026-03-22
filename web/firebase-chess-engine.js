@@ -371,6 +371,34 @@ async function firebaseLoadChat(gameId) {
    ============================================================================= */
 
 /**
+ * Claim a seat (white or black) in a game using a Firebase transaction.
+ * First player gets white, second gets black.
+ * @param {string} gameId
+ * @param {string} playerId
+ * @returns {Promise<string>} "white" or "black"
+ */
+async function claimSeat(gameId, playerId) {
+    const seatsRef = firebaseDb.ref('games/' + gameId + '/seats');
+    const result = await seatsRef.transaction((seats) => {
+        if (!seats) seats = {};
+        if (seats.white === playerId) return seats; // already white
+        if (seats.black === playerId) return seats; // already black
+        if (!seats.white) {
+            seats.white = playerId;
+        } else if (!seats.black) {
+            seats.black = playerId;
+        }
+        return seats;
+    });
+
+    const seats = result.snapshot.val() || {};
+    if (seats.white === playerId) return 'white';
+    if (seats.black === playerId) return 'black';
+    // Fallback: spectator gets white view
+    return 'white';
+}
+
+/**
  * Generate a random game ID.
  * @returns {string}
  */
