@@ -98,9 +98,10 @@ let isGameCreator = false;
  * Initialize the application on page load.
  */
 async function init() {
-    // Get game ID from URL path
+    // Get game ID from URL path, stripping the base path
     const path = window.location.pathname;
-    gameId = path.substring(1); // Remove leading slash
+    const basePath = typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
+    gameId = path.startsWith(basePath) ? path.substring(basePath.length) : path.substring(1);
 
     // If no game ID (home page), show the book selector
     if (!gameId || gameId === '') {
@@ -641,7 +642,8 @@ async function advanceToNextBoardGame() {
     try {
         const newGameId = await firebaseCreateGame();
         const boardFile = currentChapter.boardImages[championshipState.currentBoardIndex].file;
-        const nextGameUrl = `/${newGameId}?championship=true&chapter=${championshipState.chapterId}&boardIndex=${championshipState.currentBoardIndex}&board=${boardFile}`;
+        const base = typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
+        const nextGameUrl = `${base}${newGameId}?championship=true&chapter=${championshipState.chapterId}&boardIndex=${championshipState.currentBoardIndex}&board=${boardFile}`;
 
         // Copy existing chat messages to the new game
         const messagesToCopy = chatMessages.filter(msg => !msg.message.startsWith('__'));
@@ -868,7 +870,7 @@ function showChampionshipResults() {
 function returnToMenu() {
     sessionStorage.removeItem('championshipState');
     sessionStorage.removeItem('championshipRole');
-    window.location.href = '/';
+    window.location.href = typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
 }
 
 /* =============================================================================
@@ -876,7 +878,7 @@ function returnToMenu() {
    ============================================================================= */
 
 function newGame() {
-    window.location.href = '/';
+    window.location.href = typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
 }
 
 function cycleBackground() {

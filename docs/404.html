@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <script>
         // GitHub Pages SPA redirect: preserve path + query in sessionStorage, load index
-        sessionStorage.setItem('redirect', window.location.pathname + window.location.search);
-        window.location.replace('/');
+        var path = window.location.pathname + window.location.search;
+        sessionStorage.setItem('redirect', path);
+        // Detect base path from the URL (e.g., /Chess-using-Golang/)
+        var base = window.location.pathname.match(/^(\/[^/]+\/)/);
+        window.location.replace(base ? base[1] : '/');
     </script>
 </head>
 <body></body>

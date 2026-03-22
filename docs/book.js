@@ -21,7 +21,7 @@ async function buildBookPages() {
     // Load chapters.json
     let chapters;
     try {
-        const response = await fetch('/chapters.json');
+        const response = await fetch('chapters.json');
         const data = await response.json();
         chapters = data.chapters;
     } catch (e) {
@@ -469,15 +469,16 @@ async function splitTransition(chatImagePath, boardImagePath) {
  */
 async function createGameUrl(chapterId, boardImageFile, isChampionship = false) {
     try {
+        const base = typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
         const newGameId = await firebaseCreateGame();
-        let url = `/${newGameId}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
+        let url = `${base}${newGameId}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
         if (isChampionship) {
             url += '&championship=true&boardIndex=0';
         }
         return url;
     } catch (e) {
         console.error('Failed to create game:', e);
-        return '/';
+        return typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
     }
 }
 

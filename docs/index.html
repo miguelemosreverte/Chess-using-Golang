@@ -59,12 +59,27 @@
     </div>
 
     <script>
+        // Detect base path (works on GitHub Pages and locally)
+        // On GH Pages: /Chess-using-Golang/  Locally: /
+        var BASE_PATH = (function() {
+            var scripts = document.getElementsByTagName('script');
+            // Find the script tag in index.html to determine the base
+            var path = window.location.pathname;
+            // If path contains a known repo segment, use it as base
+            var match = path.match(/^(\/[^/]+\/)/);
+            // Check if the first segment is NOT a game ID (game IDs are alphanumeric, 8 chars)
+            if (match && match[1].length > 10) {
+                return match[1];
+            }
+            return '/';
+        })();
+
         // GitHub Pages SPA: restore path after 404.html redirect
         (function() {
             var redirect = sessionStorage.getItem('redirect');
             if (redirect) {
                 sessionStorage.removeItem('redirect');
-                if (redirect !== '/' && redirect !== window.location.pathname) {
+                if (redirect !== BASE_PATH && redirect !== window.location.pathname) {
                     history.replaceState(null, '', redirect);
                 }
             }

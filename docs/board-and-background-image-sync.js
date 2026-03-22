@@ -94,7 +94,7 @@ let chatRotationTimer = null;
  */
 async function loadChaptersConfig() {
     try {
-        const response = await fetch('/chapters.json');
+        const response = await fetch('chapters.json');
         if (response.ok) {
             chaptersData = await response.json();
 
