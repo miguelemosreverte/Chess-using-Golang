@@ -235,6 +235,13 @@ async function init() {
                     updateUI();
                     sendAutoHello();
                     checkForOpponent();
+
+                    setTimeout(() => {
+                        if (revealedPieces !== 'all') {
+                            revealedPieces = 'all';
+                            updateUI();
+                        }
+                    }, 3000);
                 });
             } else if (isGameCreator && piecesHidden) {
                 document.getElementById('board').addEventListener('click', function onBoardClick() {
