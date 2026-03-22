@@ -579,9 +579,9 @@ async function loadBgConfig() {
     }
 
     try {
-        const response = await fetch('/config/' + configPath);
-        if (response.ok) {
-            const config = await response.json();
+        const stored = localStorage.getItem('calibration_' + configPath);
+        if (stored) {
+            const config = JSON.parse(stored);
             corners = [...config.corners];
             borderHidden = config.border === false;
             checkerboardHidden = config.checkerboard === false;
@@ -596,7 +596,7 @@ async function loadBgConfig() {
             return;
         }
     } catch (e) {
-        // Server config not found, reset to defaults
+        // Config not found, reset to defaults
         corners = [];
         calibrationViewport = null;
         borderHidden = false;
@@ -638,23 +638,15 @@ async function saveConfigToServer() {
     };
 
     try {
-        const response = await fetch('/config/' + configPath, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config)
-        });
+        localStorage.setItem('calibration_' + configPath, JSON.stringify(config));
 
-        if (response.ok) {
-            // Mark image as calibrated in chapters data
-            if (currentChapter && currentChapter.boardImages[currentBoardImageIndex]) {
-                currentChapter.boardImages[currentBoardImageIndex].calibrated = true;
-            }
-            updateLegendStatus('Saved!');
-            // Update status after a short delay
-            setTimeout(() => updateCalibrationStatus(), 1500);
-        } else {
-            updateLegendStatus('Save failed');
+        // Mark image as calibrated in chapters data
+        if (currentChapter && currentChapter.boardImages[currentBoardImageIndex]) {
+            currentChapter.boardImages[currentBoardImageIndex].calibrated = true;
         }
+        updateLegendStatus('Saved!');
+        // Update status after a short delay
+        setTimeout(() => updateCalibrationStatus(), 1500);
     } catch (e) {
         updateLegendStatus('Save error: ' + e.message);
     }

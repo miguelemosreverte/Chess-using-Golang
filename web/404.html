@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script>
+        // GitHub Pages SPA redirect: preserve path + query in sessionStorage, load index
+        sessionStorage.setItem('redirect', window.location.pathname + window.location.search);
+        window.location.replace('/');
+    </script>
+</head>
+<body></body>
+</html>

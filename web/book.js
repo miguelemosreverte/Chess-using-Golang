@@ -469,9 +469,8 @@ async function splitTransition(chatImagePath, boardImagePath) {
  */
 async function createGameUrl(chapterId, boardImageFile, isChampionship = false) {
     try {
-        const response = await fetch('/api/games', { method: 'POST' });
-        const game = await response.json();
-        let url = `/${game.id}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
+        const newGameId = await firebaseCreateGame();
+        let url = `/${newGameId}?chapter=${chapterId}&board=${encodeURIComponent(boardImageFile)}`;
         if (isChampionship) {
             url += '&championship=true&boardIndex=0';
         }

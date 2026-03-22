@@ -58,9 +58,25 @@
         </div>
     </div>
 
+    <script>
+        // GitHub Pages SPA: restore path after 404.html redirect
+        (function() {
+            var redirect = sessionStorage.getItem('redirect');
+            if (redirect) {
+                sessionStorage.removeItem('redirect');
+                if (redirect !== '/' && redirect !== window.location.pathname) {
+                    history.replaceState(null, '', redirect);
+                }
+            }
+        })();
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="chapter-parser.js"></script>
     <script src="film-burn-transition.js"></script>
     <script src="book.js"></script>
+    <script src="firebase-chess-engine.js"></script>
     <script src="board-and-background-image-sync.js"></script>
     <script src="app.js"></script>
 </body>
