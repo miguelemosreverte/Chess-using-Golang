@@ -109,7 +109,7 @@ async function init() {
         return;
     }
 
-    // Generate unique player ID for this tab session
+    // Generate unique player ID for this tab
     playerId = sessionStorage.getItem('playerId');
     if (!playerId) {
         playerId = Math.random().toString(36).substr(2, 9);

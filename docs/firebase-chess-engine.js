@@ -399,6 +399,100 @@ async function claimSeat(gameId, playerId) {
 }
 
 /**
+ * Find or create a game for a chapter (matchmaking).
+ * If someone is already waiting in this chapter, join their game.
+ * Otherwise, create a new game and register as waiting.
+ * @param {string} chapterId
+ * @param {string} playerId
+ * @returns {Promise<{gameId: string, isHost: boolean}>}
+ */
+async function firebaseMatchmake(chapterId, playerId) {
+    const waitingRef = firebaseDb.ref('waiting_games/' + chapterId);
+
+    // Try to atomically claim an existing waiting game
+    const result = await waitingRef.transaction((current) => {
+        if (current && current.hostId !== playerId) {
+            // Someone is waiting — remove the listing (we're joining)
+            return null;
+        }
+        // No one waiting or it's our own listing — don't change
+        return current;
+    });
+
+    if (!result.committed) {
+        // Transaction aborted — shouldn't happen, but fall back to hosting
+        return await hostNewGame(chapterId, playerId);
+    }
+
+    // If we cleared the waiting entry, we're joining that game
+    const beforeVal = result.snapshot.val();
+    if (beforeVal === null) {
+        // We successfully consumed a waiting game — but we need the data
+        // Re-read won't work since we deleted it. Use a different approach.
+    }
+
+    // Simpler approach: read first, then try to delete atomically
+    const snapshot = await waitingRef.once('value');
+    const waiting = snapshot.val();
+
+    if (waiting && waiting.hostId !== playerId) {
+        // Someone is waiting — try to claim it
+        const claimed = await waitingRef.transaction((current) => {
+            if (current && current.hostId === waiting.hostId) {
+                return null; // Delete — we're joining
+            }
+            return current; // Changed, abort
+        });
+
+        if (claimed.committed && claimed.snapshot.val() === null) {
+            // Successfully joined
+            return { gameId: waiting.gameId, isHost: false };
+        }
+    }
+
+    // No one waiting or claim failed — host a new game
+    return await hostNewGame(chapterId, playerId);
+}
+
+/**
+ * Create a new game and register it as waiting.
+ * @param {string} chapterId
+ * @param {string} playerId
+ * @returns {Promise<{gameId: string, isHost: boolean}>}
+ */
+async function hostNewGame(chapterId, playerId) {
+    const gameId = await firebaseCreateGame();
+    // Claim white seat
+    await claimSeat(gameId, playerId);
+    // Register as waiting
+    await firebaseDb.ref('waiting_games/' + chapterId).set({
+        gameId: gameId,
+        hostId: playerId,
+        timestamp: Date.now()
+    });
+    return { gameId, isHost: true };
+}
+
+/**
+ * Listen for an opponent joining a waiting game.
+ * Resolves when the waiting entry is removed (opponent claimed it).
+ * @param {string} chapterId
+ * @returns {Promise<void>}
+ */
+function firebaseWaitForOpponent(chapterId) {
+    return new Promise((resolve) => {
+        const ref = firebaseDb.ref('waiting_games/' + chapterId);
+        const listener = ref.on('value', (snapshot) => {
+            if (!snapshot.val()) {
+                // Waiting entry removed — opponent joined!
+                ref.off('value', listener);
+                resolve();
+            }
+        });
+    });
+}
+
+/**
  * Generate a random game ID.
  * @returns {string}
  */

@@ -214,6 +214,8 @@ async function enterChapter(chapterId) {
     const chapter = chapterData[chapterId];
     if (!chapter) return;
 
+    const base = typeof BASE_PATH !== 'undefined' ? BASE_PATH : '/';
+
     // Start championship at first board image
     const boardImage = chapter.boardImages[0];
     const boardImagePath = `chapters/${chapterId}/board/${boardImage.file}`;
@@ -231,46 +233,102 @@ async function enterChapter(chapterId) {
     // Get chat images for the rapid page turns
     const chatImages = chapter.chatImages || [];
 
-    // Create fullscreen book for the accelerating transition
-    const fullscreenBook = createAcceleratingBook(boardImagePath, chatImages);
-    document.body.appendChild(fullscreenBook);
-
-    // Fade in fullscreen book, fade out original
-    await sleep(50);
-    if (bookOverlay) {
-        bookOverlay.style.transition = 'opacity 0.3s';
-        bookOverlay.style.opacity = '0.5';
-    }
-    fullscreenBook.style.transition = 'opacity 0.3s';
-    fullscreenBook.style.opacity = '1';
-
-    await sleep(300);
-
-    // Hide original book
-    if (bookOverlay) {
-        bookOverlay.style.display = 'none';
+    // Get or create player ID — will persist through navigation to the game page
+    let pid = sessionStorage.getItem('playerId');
+    if (!pid) {
+        pid = Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem('playerId', pid);
     }
 
-    // Run the accelerating page turns
-    await runAcceleratingPageTurns(fullscreenBook, chatImages, boardImagePath);
+    // Matchmake: find an existing waiting game or create a new one
+    const match = await firebaseMatchmake(chapterId, pid);
 
-    // Create game first to get the ID
-    const gameUrl = await createGameUrl(chapterId, boardImage.file, true);
+    if (match.isHost) {
+        // HOST: show the transition, then wait for opponent
 
-    // Extract gameId from URL (format: /gameId?params)
-    const gameIdMatch = gameUrl.match(/^\/([^?]+)/);
-    const newGameId = gameIdMatch ? gameIdMatch[1] : null;
+        // Create fullscreen book for the accelerating transition
+        const fullscreenBook = createAcceleratingBook(boardImagePath, chatImages);
+        document.body.appendChild(fullscreenBook);
 
-    // Store transition data with GAME-SPECIFIC key
-    // This prevents other tabs from picking up this transition
-    if (newGameId) {
-        sessionStorage.setItem(`transition_${newGameId}`, JSON.stringify({
+        await sleep(50);
+        if (bookOverlay) {
+            bookOverlay.style.transition = 'opacity 0.3s';
+            bookOverlay.style.opacity = '0.5';
+        }
+        fullscreenBook.style.transition = 'opacity 0.3s';
+        fullscreenBook.style.opacity = '1';
+
+        await sleep(300);
+        if (bookOverlay) {
+            bookOverlay.style.display = 'none';
+        }
+
+        await runAcceleratingPageTurns(fullscreenBook, chatImages, boardImagePath);
+
+        // Show "Waiting for opponent" on the final board image
+        const waitingEl = document.createElement('div');
+        waitingEl.style.cssText = `
+            position: fixed;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-family: Georgia, serif;
+            font-size: 1.5em;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+            animation: pulse 2s infinite;
+            z-index: 2001;
+        `;
+        waitingEl.textContent = 'Waiting for opponent...';
+        document.body.appendChild(waitingEl);
+
+        // Wait for opponent to join (Firebase listener)
+        await firebaseWaitForOpponent(chapterId);
+
+        // Opponent joined! Remove waiting text and navigate
+        waitingEl.textContent = 'Opponent found!';
+        await sleep(800);
+        waitingEl.remove();
+
+        const gameUrl = `${base}${match.gameId}?chapter=${chapterId}&board=${encodeURIComponent(boardImage.file)}&championship=true&boardIndex=0`;
+
+        sessionStorage.setItem(`transition_${match.gameId}`, JSON.stringify({
             boardImage: boardImagePath,
             chapterId: chapterId
         }));
-    }
+        // Mark as game creator
+        sessionStorage.setItem(`gameCreator_${match.gameId}`, pid);
 
-    window.location.href = gameUrl;
+        window.location.href = gameUrl;
+
+    } else {
+        // JOINER: show transition, then go straight to the game
+
+        const fullscreenBook = createAcceleratingBook(boardImagePath, chatImages);
+        document.body.appendChild(fullscreenBook);
+
+        await sleep(50);
+        if (bookOverlay) {
+            bookOverlay.style.transition = 'opacity 0.3s';
+            bookOverlay.style.opacity = '0.5';
+        }
+        fullscreenBook.style.transition = 'opacity 0.3s';
+        fullscreenBook.style.opacity = '1';
+
+        await sleep(300);
+        if (bookOverlay) {
+            bookOverlay.style.display = 'none';
+        }
+
+        await runAcceleratingPageTurns(fullscreenBook, chatImages, boardImagePath);
+
+        // Claim black seat
+        await claimSeat(match.gameId, pid);
+
+        const gameUrl = `${base}${match.gameId}?chapter=${chapterId}&board=${encodeURIComponent(boardImage.file)}&championship=true&boardIndex=0`;
+
+        window.location.href = gameUrl;
+    }
 }
 
 /**
