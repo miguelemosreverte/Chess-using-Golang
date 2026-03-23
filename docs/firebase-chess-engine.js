@@ -409,43 +409,21 @@ async function claimSeat(gameId, playerId) {
 async function firebaseMatchmake(chapterId, playerId) {
     const waitingRef = firebaseDb.ref('waiting_games/' + chapterId);
 
-    // Try to atomically claim an existing waiting game
-    const result = await waitingRef.transaction((current) => {
-        if (current && current.hostId !== playerId) {
-            // Someone is waiting — remove the listing (we're joining)
-            return null;
-        }
-        // No one waiting or it's our own listing — don't change
-        return current;
-    });
-
-    if (!result.committed) {
-        // Transaction aborted — shouldn't happen, but fall back to hosting
-        return await hostNewGame(chapterId, playerId);
-    }
-
-    // If we cleared the waiting entry, we're joining that game
-    const beforeVal = result.snapshot.val();
-    if (beforeVal === null) {
-        // We successfully consumed a waiting game — but we need the data
-        // Re-read won't work since we deleted it. Use a different approach.
-    }
-
-    // Simpler approach: read first, then try to delete atomically
+    // Read current waiting state
     const snapshot = await waitingRef.once('value');
     const waiting = snapshot.val();
 
-    if (waiting && waiting.hostId !== playerId) {
-        // Someone is waiting — try to claim it
+    if (waiting) {
+        // Someone is waiting — try to atomically claim their game
         const claimed = await waitingRef.transaction((current) => {
-            if (current && current.hostId === waiting.hostId) {
-                return null; // Delete — we're joining
+            if (current && current.gameId === waiting.gameId) {
+                return null; // Delete the listing — we're joining
             }
-            return current; // Changed, abort
+            return current; // Already changed, abort
         });
 
         if (claimed.committed && claimed.snapshot.val() === null) {
-            // Successfully joined
+            // Successfully joined their game
             return { gameId: waiting.gameId, isHost: false };
         }
     }
